@@ -1,0 +1,104 @@
+# Example configuration for repo-metadata-cli (TOML)
+
+[files]
+# Explicitly whitelist code extensions; omit to rely on inference from grammar_repos and extension_language_map.
+allowed_extensions = [
+  ".py", ".pyi",
+  ".js", ".jsx", ".ts", ".tsx",
+  ".java", ".kt", ".kts",
+  ".go", ".rs",
+  ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp",
+  ".cs",
+  ".php",
+  ".rb",
+  ".swift",
+  ".scala",
+]
+# Allow specific build files regardless of extension.
+allowed_filenames = ["Makefile", "Dockerfile", "docker-compose.yml", "CMakeLists.txt"]
+# unknown_extensions_path = "path/to/custom_unknown_extensions.log"  # optional; absolute or relative to this file
+
+[tree_sitter]
+# Preferred grammars to fetch/build; this list also drives allowed_extensions inference.
+grammar_repos = [
+  "https://github.com/tree-sitter/tree-sitter-python",
+  "https://github.com/tree-sitter/tree-sitter-javascript",
+  "https://github.com/tree-sitter/tree-sitter-typescript",
+  "https://github.com/tree-sitter/tree-sitter-java",
+  "https://github.com/tree-sitter/tree-sitter-go",
+  "https://github.com/tree-sitter/tree-sitter-rust",
+  "https://github.com/tree-sitter/tree-sitter-c",
+  "https://github.com/tree-sitter/tree-sitter-cpp",
+  "https://github.com/tree-sitter/tree-sitter-c-sharp",
+  "https://github.com/tree-sitter/tree-sitter-php",
+  "https://github.com/tree-sitter/tree-sitter-ruby",
+  "https://github.com/tree-sitter/tree-sitter-swift",
+  "https://github.com/tree-sitter/tree-sitter-scala",
+  "https://github.com/tree-sitter/tree-sitter-kotlin",
+]
+# Where cloned grammars will live.
+vendor_dir = "vendor"
+# Where the compiled Tree-sitter library will be placed.
+lib_path = "build/my-languages.so"
+
+# Required language/extension mappings
+extension_language_map = {
+  ".py" = "python",
+  ".pyi" = "python",
+  ".js" = "javascript",
+  ".jsx" = "javascript",
+  ".ts" = "typescript",
+  ".tsx" = "tsx",
+  ".java" = "java",
+  ".kt" = "kotlin",
+  ".kts" = "kotlin",
+  ".go" = "go",
+  ".rs" = "rust",
+  ".c" = "c",
+  ".h" = "c",
+  ".cpp" = "cpp",
+  ".cc" = "cpp",
+  ".cxx" = "cpp",
+  ".hpp" = "cpp",
+  ".cs" = "c_sharp",
+  ".php" = "php",
+  ".rb" = "ruby",
+  ".swift" = "swift",
+  ".scala" = "scala",
+}
+
+language_repo_map = {
+  python = "vendor/tree-sitter-python",
+  javascript = "vendor/tree-sitter-javascript",
+  typescript = "vendor/tree-sitter-typescript/typescript",
+  tsx = "vendor/tree-sitter-typescript/tsx",
+  java = "vendor/tree-sitter-java",
+  kotlin = "vendor/tree-sitter-kotlin",
+  go = "vendor/tree-sitter-go",
+  rust = "vendor/tree-sitter-rust",
+  c = "vendor/tree-sitter-c",
+  cpp = "vendor/tree-sitter-cpp",
+  c_sharp = "vendor/tree-sitter-c-sharp",
+  php = "vendor/tree-sitter-php",
+  ruby = "vendor/tree-sitter-ruby",
+  swift = "vendor/tree-sitter-swift",
+  scala = "vendor/tree-sitter-scala",
+}
+
+lang_func_node_types = {
+  python = ["function_definition"],
+  javascript = ["function_declaration", "method_definition"],
+  typescript = ["function_declaration", "method_definition"],
+  tsx = ["function_declaration", "method_definition"],
+  java = ["method_declaration", "constructor_declaration"],
+  kotlin = ["function_declaration"],
+  go = ["function_declaration", "method_declaration"],
+  rust = ["function_item"],
+  c = ["function_definition"],
+  cpp = ["function_definition"],
+  c_sharp = ["method_declaration"],
+  php = ["function_declaration", "method_declaration"],
+  ruby = ["method", "singleton_method"],
+  swift = ["function_declaration"],
+  scala = ["function_definition"],
+}

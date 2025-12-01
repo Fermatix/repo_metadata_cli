@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "repo-metadata-cli"
+version = "0.1.0"
+description = "CLI utility to compute repository metadata for dataset curation."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Vladislav Savenkov" }]
+dependencies = [
+    "pandas>=2.1",
+    "tqdm>=4.66",
+    "tree-sitter>=0.22",
+    "tree-sitter-languages>=1.10",
+    "typer>=0.12",
+    "transformers>=4.35",
+    "tomli>=2.0; python_version < '3.11'",
+    "tomli-w>=1.0",
+    "flask (>=3.1.2,<4.0.0)",
+    "dpath (>=2.2.0,<3.0.0)",
+    "tree-sitter-language-pack (>=0.13.0,<0.14.0)",
+]
+
+[project.scripts]
+repo-metadata = "repo_metadata_cli.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+repo_metadata_cli = ["py.typed"]

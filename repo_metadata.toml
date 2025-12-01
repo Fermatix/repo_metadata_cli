@@ -1,0 +1,350 @@
+[files]
+allowed_extensions = [
+    ".agda",
+    ".bash",
+    ".bash_profile",
+    ".bashrc",
+    ".c",
+    ".cc",
+    ".cjs",
+    ".cpp",
+    ".cs",
+    ".css",
+    ".cxx",
+    ".ebuild",
+    ".eclass",
+    ".go",
+    ".h",
+    ".hpp",
+    ".hs",
+    ".hs-boot",
+    ".html",
+    ".hxx",
+    ".java",
+    ".jl",
+    ".jsdoc",
+    ".json",
+    ".jsx",
+    ".mjs",
+    ".ml",
+    ".mli",
+    ".php",
+    ".py",
+    ".rb",
+    ".rs",
+    ".sbt",
+    ".scala",
+    ".sh",
+    ".sv",
+    ".svh",
+    ".toml",
+    ".ts",
+    ".tsx",
+    ".v",
+]
+allowed_filenames = [
+    "Makefile",
+    "Dockerfile",
+    "docker-compose.yml",
+    "CMakeLists.txt",
+]
+
+[tree_sitter]
+language_packages = [
+    "tree-sitter-actionscript",
+    "tree-sitter-ada",
+    "tree-sitter-agda",
+    "tree-sitter-sfapex",
+    "tree-sitter-arduino",
+    "tree-sitter-asm",
+    "tree-sitter-astro",
+    "tree-sitter-bash",
+    "tree-sitter-beancount",
+    "tree-sitter-bibtex",
+    "tree-sitter-bicep",
+    "tree-sitter-bitbake",
+    "tree-sitter-bsl",
+    "tree-sitter-c",
+    "tree-sitter-cairo",
+    "tree-sitter-capnp",
+    "tree-sitter-chatito",
+    "tree-sitter-clarity",
+    "tree-sitter-clojure",
+    "tree-sitter-cmake",
+    "tree-sitter-cobol",
+    "tree-sitter-comment",
+    "tree-sitter-commonlisp",
+    "tree-sitter-cpon",
+    "tree-sitter-cpp",
+    "tree-sitter-c-sharp",
+    "tree-sitter-css",
+    "tree-sitter-csv",
+    "tree-sitter-cuda",
+    "tree-sitter-d",
+    "tree-sitter-dart",
+    "tree-sitter-dockerfile",
+    "tree-sitter-doxygen",
+    "tree-sitter-xml",
+    "tree-sitter-elisp",
+    "tree-sitter-elixir",
+    "tree-sitter-elm",
+    "tree-sitter-embedded-template",
+    "tree-sitter-erlang",
+    "tree-sitter-fennel",
+    "tree-sitter-firrtl",
+    "tree-sitter-fish",
+    "tree-sitter-fortran",
+    "tree-sitter-fsharp",
+    "tree-sitter-func",
+    "tree-sitter-gdscript",
+    "tree-sitter-gitattributes",
+    "tree-sitter-gitcommit",
+    "tree-sitter-gitignore",
+    "tree-sitter-gleam",
+    "tree-sitter-glsl",
+    "tree-sitter-gn",
+    "tree-sitter-go",
+    "tree-sitter-go-mod",
+    "tree-sitter-go-sum",
+    "tree-sitter-graphql",
+    "tree-sitter-groovy",
+    "tree-sitter-gstlaunch",
+    "tree-sitter-hack",
+    "tree-sitter-hare",
+    "tree-sitter-haskell",
+    "tree-sitter-haxe",
+    "tree-sitter-hcl",
+    "tree-sitter-heex",
+    "tree-sitter-hlsl",
+    "tree-sitter-html",
+    "tree-sitter-hyprlang",
+    "tree-sitter-ispc",
+    "tree-sitter-ini",
+    "tree-sitter-janet",
+    "tree-sitter-java",
+    "tree-sitter-javascript",
+    "tree-sitter-jsdoc",
+    "tree-sitter-json",
+    "tree-sitter-jsonnet",
+    "tree-sitter-julia",
+    "tree-sitter-kconfig",
+    "tree-sitter-kdl",
+    "tree-sitter-kotlin",
+    "tree-sitter-latex",
+    "tree-sitter-linkerscript",
+    "tree-sitter-llvm",
+    "tree-sitter-lua",
+    "tree-sitter-luadoc",
+    "tree-sitter-luap",
+    "tree-sitter-luau",
+    "tree-sitter-magik",
+    "tree-sitter-make",
+    "tree-sitter-markdown",
+    "tree-sitter-markdown",
+    "tree-sitter-matlab",
+    "tree-sitter-mermaid",
+    "tree-sitter-meson",
+    "tree-sitter-netlinx",
+    "tree-sitter-nim",
+    "tree-sitter-ninja",
+    "tree-sitter-nix",
+    "tree-sitter-nqc",
+    "tree-sitter-objc",
+    "tree-sitter-ocaml",
+    "tree-sitter-odin",
+    "tree-sitter-org",
+    "tree-sitter-pascal",
+    "tree-sitter-pem",
+    "tree-sitter-perl",
+    "tree-sitter-pgn",
+    "tree-sitter-php",
+    "tree-sitter-po",
+    "tree-sitter-pony",
+    "tree-sitter-powershell",
+    "tree-sitter-printf",
+    "tree-sitter-prisma",
+    "tree-sitter-properties",
+    "tree-sitter-proto",
+    "tree-sitter-csv",
+    "tree-sitter-puppet",
+    "tree-sitter-purescript",
+    "tree-sitter-pymanifest",
+    "tree-sitter-python",
+    "tree-sitter-qmldir",
+    "tree-sitter-qmljs",
+    "tree-sitter-query",
+    "tree-sitter-r",
+    "tree-sitter-racket",
+    "tree-sitter-rbs",
+    "tree-sitter-re2c",
+    "tree-sitter-readline",
+    "tree-sitter-rego",
+    "tree-sitter-requirements",
+    "tree-sitter-ron",
+    "tree-sitter-rst",
+    "tree-sitter-ruby",
+    "tree-sitter-rust",
+    "tree-sitter-scala",
+    "tree-sitter-scheme",
+    "tree-sitter-scss",
+    "tree-sitter-slang",
+    "tree-sitter-smali",
+    "tree-sitter-smithy",
+    "tree-sitter-solidity",
+    "tree-sitter-sparql",
+    "tree-sitter-sql",
+    "tree-sitter-squirrel",
+    "tree-sitter-starlark",
+    "tree-sitter-svelte",
+    "tree-sitter-swift",
+    "tree-sitter-tablegen",
+    "tree-sitter-tcl",
+    "tree-sitter-test",
+    "tree-sitter-thrift",
+    "tree-sitter-toml",
+    "tree-sitter-csv",
+    "tree-sitter-typescript",
+    "tree-sitter-twig",
+    "tree-sitter-typescript",
+    "tree-sitter-typst",
+    "tree-sitter-udev",
+    "tree-sitter-ungrammar",
+    "tree-sitter-uxntal",
+    "tree-sitter-v",
+    "tree-sitter-verilog",
+    "tree-sitter-vhdl",
+    "tree-sitter-vim",
+    "tree-sitter-vue",
+    "tree-sitter-wasm",
+    "tree-sitter-wgsl",
+    "tree-sitter-xcompose",
+    "tree-sitter-xml",
+    "tree-sitter-yaml",
+    "tree-sitter-yuck",
+    "tree-sitter-zig",
+]
+vendor_dir = "vendor"
+
+[tree_sitter.extension_language_map]
+".agda" = "agda"
+".sh" = "bash"
+".bash" = "bash"
+".bashrc" = "bash"
+".bash_profile" = "bash"
+".ebuild" = "bash"
+".eclass" = "bash"
+".c" = "c"
+".h" = "cpp"
+".cs" = "csharp"
+".cc" = "cpp"
+".cpp" = "cpp"
+".cxx" = "cpp"
+".hpp" = "cpp"
+".hxx" = "cpp"
+".css" = "css"
+".go" = "go"
+".hs" = "haskell"
+".hs-boot" = "haskell"
+".html" = "html"
+".java" = "java"
+".mjs" = "javascript"
+".cjs" = "javascript"
+".jsx" = "javascript"
+".json" = "json"
+".jl" = "julia"
+".ml" = "ocaml"
+".mli" = "ocaml_interface"
+".php" = "php"
+".py" = "python"
+".rb" = "ruby"
+".rs" = "rust"
+".scala" = "scala"
+".sbt" = "scala"
+".ts" = "typescript"
+".tsx" = "tsx"
+".jsdoc" = "jsdoc"
+".toml" = "toml"
+".v" = "verilog"
+".sv" = "verilog"
+".svh" = "verilog"
+
+[tree_sitter.lang_func_node_types]
+python = [
+    "function_definition",
+]
+javascript = [
+    "function_declaration",
+    "method_definition",
+]
+typescript = [
+    "function_declaration",
+    "method_definition",
+]
+tsx = [
+    "function_declaration",
+    "method_definition",
+]
+java = [
+    "method_declaration",
+    "constructor_declaration",
+]
+kotlin = [
+    "function_declaration",
+]
+go = [
+    "function_declaration",
+    "method_declaration",
+]
+rust = [
+    "function_item",
+]
+c = [
+    "function_definition",
+]
+cpp = [
+    "function_definition",
+]
+c_sharp = [
+    "method_declaration",
+]
+php = [
+    "function_declaration",
+    "method_declaration",
+]
+ruby = [
+    "method",
+    "singleton_method",
+]
+swift = [
+    "function_declaration",
+]
+scala = [
+    "function_definition",
+]
+agda = []
+bash = [
+    "function_definition",
+]
+css = []
+haskell = []
+html = []
+julia = [
+    "function_definition",
+]
+ocaml = [
+    "value_definition",
+]
+ocaml_interface = [
+    "value_definition",
+]
+ql = [
+    "predicate_definition",
+]
+ql_dbscheme = []
+flow = [
+    "function_declaration",
+    "method_definition",
+]
+json = []
+
+[tree_sitter.language_repo_map]

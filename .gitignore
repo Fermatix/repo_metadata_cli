@@ -1,0 +1,35 @@
+# Bytecode and caches
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Virtual envs and tooling
+.venv/
+env/
+venv/
+.env
+.uv/
+
+# Packaging / build artifacts
+build/
+dist/
+*.egg-info/
+
+# IDE / OS noise
+.DS_Store
+.vscode/
+.idea/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Coverage / test artifacts
+.coverage*
+htmlcov/
+
+# CLI outputs
+repo_metadata.csv
+repo_tokens.csv
+repo_metadata_with_tokens.csv
