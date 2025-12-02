@@ -30,6 +30,4 @@ dist/
 htmlcov/
 
 # CLI outputs
-repo_metadata.csv
-repo_tokens.csv
-repo_metadata_with_tokens.csv
+*.csv
