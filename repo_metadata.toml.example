@@ -102,3 +102,11 @@ lang_func_node_types = {
   swift = ["function_declaration"],
   scala = ["function_definition"],
 }
+
+[tokens]
+# Optional defaults for token counting (used by `repo-metadata tokens`).
+# tokenizer_id = "deepseek-ai/deepseek-coder-6.7b-base"
+# Disable/enable HF tokenizers parallelism to avoid fork warnings.
+# parallelism = false
+# Override tokenizer.model_max_length to suppress long-sequence warnings during token counting.
+# max_length = 1000000

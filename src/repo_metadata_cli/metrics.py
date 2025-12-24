@@ -4,15 +4,48 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass, field
 from json import JSONDecodeError
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Set, Tuple
 
 from .allowed_files import AllowedFiles
 from .tree_sitter_support import TreeSitterManager
 from .utils import is_utf8_file, run_cmd
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class FunctionLengthStats:
+    total_func_lines: int = 0
+    function_count: int = 0
+
+    @property
+    def average(self) -> float:
+        if self.function_count == 0:
+            return 0.0
+        return self.total_func_lines / self.function_count
+
+    def merge(self, other: "FunctionLengthStats") -> None:
+        self.total_func_lines += other.total_func_lines
+        self.function_count += other.function_count
+
+
+@dataclass
+class DuplicationStats:
+    total_lines: int = 0
+    unique_hashes: Set[int] = field(default_factory=set)
+
+    @property
+    def ratio(self) -> float:
+        if self.total_lines == 0:
+            return 0.0
+        return 1.0 - (len(self.unique_hashes) / self.total_lines)
+
+    def merge(self, other: "DuplicationStats") -> None:
+        self.total_lines += other.total_lines
+        self.unique_hashes.update(other.unique_hashes)
 
 
 def _load_json_fragment(text: str) -> Dict[str, Any]:
@@ -132,12 +165,20 @@ def compute_avg_func_length(
     """
     Average function length (lines) using Tree-sitter. Only runs if grammars are available.
     """
+    stats = compute_avg_func_length_stats(repo_dir, allowed_files, ts_manager)
+    return stats.average
+
+
+def compute_avg_func_length_stats(
+    repo_dir: Path, allowed_files: AllowedFiles, ts_manager: TreeSitterManager | None
+) -> FunctionLengthStats:
+    """
+    Collect total function lines and counts to allow aggregation across branches.
+    """
+    stats = FunctionLengthStats()
     if ts_manager is None:
         logger.debug("Tree-sitter manager not configured; skipping avg_func_length.")
-        return 0.0
-
-    total_func_lines = 0
-    total_funcs = 0
+        return stats
 
     for path in iter_code_files(repo_dir, allowed_files):
         parser_entry = ts_manager.parser_for_suffix(path.suffix)
@@ -168,13 +209,10 @@ def compute_avg_func_length(
                 end_row = node.end_point[0]
                 length = end_row - start_row + 1
                 if length > 0:
-                    total_func_lines += length
-                    total_funcs += 1
+                    stats.total_func_lines += length
+                    stats.function_count += 1
             stack.extend(node.children)
-    if total_funcs == 0:
-        return 0.0
-
-    return total_func_lines / total_funcs
+    return stats
 
 
 def compute_duplication_ratio(repo_dir: Path, allowed_files: AllowedFiles) -> float:
@@ -182,9 +220,17 @@ def compute_duplication_ratio(repo_dir: Path, allowed_files: AllowedFiles) -> fl
     Approximate duplication ratio:
       duplication_ratio = 1 - (unique lines / total lines)
     """
-    total_lines = 0
-    uniq: set[int] = set()
+    stats = compute_duplication_stats(repo_dir, allowed_files)
+    return stats.ratio
 
+
+def compute_duplication_stats(
+    repo_dir: Path, allowed_files: AllowedFiles
+) -> DuplicationStats:
+    """
+    Collect duplication stats (total and unique line hashes) for aggregation across branches.
+    """
+    stats = DuplicationStats()
     for path in iter_code_files(repo_dir, allowed_files):
         try:
             text = path.read_text(encoding="utf-8", errors="ignore")
@@ -195,21 +241,27 @@ def compute_duplication_ratio(repo_dir: Path, allowed_files: AllowedFiles) -> fl
             stripped = line.strip()
             if not stripped:
                 continue
-            total_lines += 1
-            uniq.add(hash(stripped))
+            stats.total_lines += 1
+            stats.unique_hashes.add(hash(stripped))
 
-    if total_lines == 0:
-        return 0.0
-    return 1.0 - (len(uniq) / total_lines)
+    return stats
 
 
-def get_cloc_stats(repo_dir: Path) -> Tuple[Dict[str, Any], Dict[str, Dict[str, Any]]]:
+def get_cloc_stats(
+    repo_dir: Path, include_languages: List[str] | None = None
+) -> Tuple[Dict[str, Any], Dict[str, Dict[str, Any]]]:
     """
     Run ``cloc --json`` against the current repository state.
     Returns (summary, langs) where summary = SUM, langs = {lang: stats}.
     """
     # --quiet подавляет прогресс-строки, но cloc всё равно может писать предупреждения в stdout.
-    cloc_out = run_cmd(["cloc", "--json", "--quiet", str(repo_dir)])
+    cmd = ["cloc", "--json", "--quiet", str(repo_dir)]
+    if include_languages:
+        langs_arg = ",".join(sorted({lang for lang in include_languages if lang}))
+        if langs_arg:
+            cmd.insert(-1, f"--include-lang={langs_arg}")
+
+    cloc_out = run_cmd(cmd)
     if not cloc_out:
         return {}, {}
 
