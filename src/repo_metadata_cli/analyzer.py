@@ -7,6 +7,7 @@ import logging
 import os
 import subprocess
 import tempfile
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set
@@ -82,6 +83,7 @@ class RepoAnalyzer:
     tokenizer_provider: Optional[TokenizerProvider] = field(
         default_factory=lambda: TokenizerProvider(DEFAULT_TOKENIZER_ID)
     )
+    cloc_languages: Optional[List[str]] = None
 
     def _clone_bundle(self, bundle_path: Path, dest_dir: Path) -> Optional[Path]:
         repo_dir = dest_dir / bundle_path.stem
@@ -99,6 +101,43 @@ class RepoAnalyzer:
             return None
         logger.debug("Cloned %s into %s", bundle_path.name, repo_dir)
         return repo_dir
+    def _latest_branch_by_commit(self, repo_dir: Path) -> Optional[str]:
+        """
+        Find the branch whose tip has the most recent commit date (local or remote).
+        """
+        refs_raw = run_cmd(
+            [
+                "git",
+                "for-each-ref",
+                "--sort=-committerdate",
+                "--format=%(refname:short)|%(committerdate:iso8601)",
+                "refs/heads",
+                "refs/remotes",
+            ],
+            cwd=repo_dir,
+        )
+        for line in refs_raw.splitlines():
+            if "|" not in line:
+                continue
+            name, _ = line.split("|", 1)
+            name = name.strip()
+            if not name or name.endswith("/HEAD") or name == "HEAD":
+                continue
+            return name
+
+        current = run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_dir)
+        return current or None
+
+    def _checkout_ref(self, repo_dir: Path, ref: str) -> bool:
+        """
+        Checkout ref quietly; returns True on success.
+        """
+        result = subprocess.run(
+            ["git", "-C", str(repo_dir), "checkout", "--force", "--quiet", ref],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return result.returncode == 0
 
     def analyze_repo_metadata(self, bundle_path: Path) -> Dict[str, Any]:
         """
@@ -106,6 +145,7 @@ class RepoAnalyzer:
         """
         logger.debug("Processing metadata for %s", bundle_path.name)
         data: Dict[str, Any] = {
+            "repo_id": str(uuid.uuid4()),
             "repo_name": bundle_path.stem,
             "languages": "",
             "stack": "",
@@ -119,6 +159,7 @@ class RepoAnalyzer:
             "repo_worktree_mb": 0.0,
             "files": 0,
             "loc": 0,
+            "raw_loc": 0,
             "avg_func_length": 0.0,
             "docstring_ratio": 0.0,
             "duplication_ratio": 0.0,
@@ -137,11 +178,17 @@ class RepoAnalyzer:
                 logger.error("Skipping %s: failed to materialize repository", bundle_path.name)
                 return data
 
+            branch_ref = self._latest_branch_by_commit(repo_dir) or "HEAD"
+            if not self._checkout_ref(repo_dir, branch_ref):
+                logger.debug("Failed to checkout %s; staying on HEAD", branch_ref)
+                branch_ref = "HEAD"
+
             data["created_at"] = run_cmd(
-                ["git", "log", "--reverse", "--format=%ai", "--max-count=1"], cwd=repo_dir
+                ["git", "log", branch_ref, "--reverse", "--format=%ai", "--max-count=1"],
+                cwd=repo_dir,
             )
             data["commit_count"] = int(
-                run_cmd(["git", "rev-list", "--count", "--all"], cwd=repo_dir) or 0
+                run_cmd(["git", "rev-list", "--count", branch_ref], cwd=repo_dir) or 0
             )
             branches_raw = run_cmd(["git", "branch", "-a"], cwd=repo_dir)
             data["branch_count"] = len([line for line in branches_raw.splitlines() if line.strip()])
@@ -159,7 +206,13 @@ class RepoAnalyzer:
             data["license_type"] = detect_license(repo_dir)
             data["documentation_cnt"] = compute_readme_stats(repo_dir)
 
-            summary, langs = get_cloc_stats(repo_dir)
+            raw_summary, _ = get_cloc_stats(repo_dir)
+            if raw_summary:
+                raw_code = raw_summary.get("code", 0)
+                raw_comment = raw_summary.get("comment", 0)
+                data["raw_loc"] = int(raw_code) + int(raw_comment)
+
+            summary, langs = get_cloc_stats(repo_dir, self.cloc_languages)
             if summary:
                 n_files = summary.get("nFiles", 0)
                 code = summary.get("code", 0)
@@ -215,19 +268,22 @@ class RepoAnalyzer:
             if repo_dir is None:
                 return data
 
-            commit_hashes = run_cmd(["git", "rev-list", "--all"], cwd=repo_dir).splitlines()
+            branch_ref = self._latest_branch_by_commit(repo_dir) or "HEAD"
+            if not self._checkout_ref(repo_dir, branch_ref):
+                logger.debug("Failed to checkout %s for tokens; staying on HEAD", branch_ref)
+                branch_ref = "HEAD"
+
+            head_commit = run_cmd(["git", "rev-parse", branch_ref], cwd=repo_dir)
             texts_all_commits: List[str] = []
 
-            for commit in commit_hashes:
-                if not commit:
-                    continue
+            if head_commit:
                 try:
                     diff = subprocess.check_output(
-                        ["git", "-C", str(repo_dir), "show", commit, "--unified=0", "--no-color"],
+                        ["git", "-C", str(repo_dir), "show", head_commit, "--unified=0", "--no-color"],
                         stderr=subprocess.DEVNULL,
                     ).decode(errors="ignore")
                 except subprocess.CalledProcessError:
-                    continue
+                    diff = ""
 
                 added_lines = extract_added_lines(diff, self.allowed_files)
                 if added_lines:
