@@ -5,7 +5,7 @@ A command-line utility for extracting repository metadata from Git bundle files.
 ## Capabilities
 - Processes full datasets of `*.bundle` files in a single pass.
 - History metrics: creation date, counts of commits and branches, sizes of `.git` and the working tree.
-- Code quality: `cloc` counts (files, code/comment lines, optionally filtered languages), language distribution, duplication ratio, average function length via Tree-sitter, README volume.
+- Code quality: `cloc` counts (files, code/comment lines, optionally filtered languages), language and extension distributions, duplication ratio, average function length via Tree-sitter, README volume.
   - `raw_loc`: total code + comment lines across all languages (unfiltered cloc); `loc` respects `include_languages`/`--include-lang` when provided.
 - License discovery: fast detection via LICENSE/COPYING files.
 - Tokenization: tokens for the latest commit and snapshot of the branch with the most recent commit (HuggingFace tokenizer).
@@ -84,6 +84,7 @@ uv run repo-metadata merge repo_metadata.csv repo_tokens.csv \
 | repo_id | string (UUID) | Primary key; randomly generated per repository during metadata extraction. | c2f9d1e8-9a41-4f72-9a8b-1f0f4f12e6a3 |
 | repo_name | string | Repository name (bundle stem); used as the key for `merge`. | openai/gym |
 | languages | stringified JSON | Language distribution by share of LoC; JSON of the form `{lang: share}`. | {"Python":0.72,"C++":0.18} |
+| extensions | stringified JSON | Extension distribution by share of LoC (after `include_languages`/`--include-lang` filters); JSON of the form `{ext: share}`. | {".py":0.82,".ts":0.18} |
 | stack | string | Human-readable top 3 languages with percentages. | Python (72%), C++ (18%), C (6%) |
 | license_type | enum | Detected root license: MIT, APACHE-2.0, GPL, GPL-3.0, BSD, MPL-2.0, UNLICENSE, UNKNOWN. | MIT |
 | created_at | timestamp (git) | Timestamp of the first commit (`git log --reverse --max-count=1`). | 2020-03-18 14:22:11 +0000 |
@@ -127,7 +128,7 @@ Populates `files.allowed_extensions` based on `tree_sitter.extension_language_ma
   - Measure sizes: bundle, `.git`, working tree (on that branch).
   - Detect the license from LICENSE/COPYING files.
   - Count README lines in the repository root.
-  - Run `cloc --json` twice: once unfiltered for `raw_loc`, and once optionally filtered via include_languages/`--include-lang` for `loc` and language distribution.
+  - Run `cloc --json` twice: once unfiltered for `raw_loc`, and once with `--by-file-by-lang` respecting include_languages/`--include-lang` for `loc`, language, and extension distributions.
   - Compute average function length via Tree-sitter on allowed files only.
   - Compute duplication as unique-line share.
 - For tokens:

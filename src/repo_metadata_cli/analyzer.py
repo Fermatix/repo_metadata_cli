@@ -23,6 +23,7 @@ from .metrics import (
     compute_readme_stats,
     detect_license,
     get_cloc_stats,
+    get_cloc_stats_by_file_and_lang,
     get_contributors_count,
     iter_code_files,
 )
@@ -148,6 +149,7 @@ class RepoAnalyzer:
             "repo_id": str(uuid.uuid4()),
             "repo_name": bundle_path.stem,
             "languages": "",
+            "extensions": "",
             "stack": "",
             "license_type": "UNKNOWN",
             "created_at": "",
@@ -212,7 +214,9 @@ class RepoAnalyzer:
                 raw_comment = raw_summary.get("comment", 0)
                 data["raw_loc"] = int(raw_code) + int(raw_comment)
 
-            summary, langs = get_cloc_stats(repo_dir, self.cloc_languages)
+            summary, langs, files_by_path = get_cloc_stats_by_file_and_lang(
+                repo_dir, self.cloc_languages
+            )
             if summary:
                 n_files = summary.get("nFiles", 0)
                 code = summary.get("code", 0)
@@ -227,7 +231,29 @@ class RepoAnalyzer:
                     data["docstring_ratio"] = 0.0
 
                 lang_code = {lang: s.get("code", 0) for lang, s in langs.items()}
+                ext_code: Dict[str, int] = {}
+                for path, stats in files_by_path.items():
+                    ext = Path(path).suffix.lower()
+                    if not ext:
+                        continue
+                    file_code = stats.get("code", 0)
+                    if not file_code:
+                        continue
+                    ext_code[ext] = ext_code.get(ext, 0) + int(file_code)
+
                 total_code = sum(lang_code.values())
+                total_ext_code = sum(ext_code.values())
+
+                if total_ext_code > 0:
+                    ext_distribution = {
+                        ext: round(c / total_ext_code, 6)
+                        for ext, c in ext_code.items()
+                        if c > 0
+                    }
+                    data["extensions"] = json.dumps(ext_distribution, ensure_ascii=False)
+                else:
+                    data["extensions"] = json.dumps({}, ensure_ascii=False)
+
                 if total_code > 0:
                     distribution = {
                         lang: round(c / total_code, 6)
@@ -242,6 +268,10 @@ class RepoAnalyzer:
                 else:
                     data["languages"] = json.dumps({}, ensure_ascii=False)
                     data["stack"] = ""
+            else:
+                data["extensions"] = json.dumps({}, ensure_ascii=False)
+                data["languages"] = json.dumps({}, ensure_ascii=False)
+                data["stack"] = ""
 
             data["avg_func_length"] = compute_avg_func_length(repo_dir, self.allowed_files, self.tree_sitter)
             data["duplication_ratio"] = compute_duplication_ratio(repo_dir, self.allowed_files)

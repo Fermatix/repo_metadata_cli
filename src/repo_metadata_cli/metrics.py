@@ -276,3 +276,48 @@ def get_cloc_stats(
         if lang not in ("header", "SUM")
     }
     return summary, langs
+
+
+def get_cloc_stats_by_file_and_lang(
+    repo_dir: Path, include_languages: List[str] | None = None
+) -> Tuple[
+    Dict[str, Any],
+    Dict[str, Dict[str, Any]],
+    Dict[str, Dict[str, Any]],
+]:
+    """
+    Run ``cloc --json --by-file-by-lang`` to collect per-language and per-file stats.
+    Returns (summary, langs, files) where:
+      - summary: aggregated SUM (prefers by_lang.SUM, falls back to by_file.SUM)
+      - langs: {language: stats}
+      - files: {filepath: stats}
+    """
+    cmd = ["cloc", "--json", "--by-file-by-lang", "--quiet", str(repo_dir)]
+    if include_languages:
+        langs_arg = ",".join(sorted({lang for lang in include_languages if lang}))
+        if langs_arg:
+            cmd.insert(-1, f"--include-lang={langs_arg}")
+
+    cloc_out = run_cmd(cmd)
+    if not cloc_out:
+        return {}, {}, {}
+
+    cloc_json = _load_json_fragment(cloc_out)
+    if not cloc_json:
+        return {}, {}, {}
+
+    by_file = cloc_json.get("by_file") or {}
+    by_lang = cloc_json.get("by_lang") or {}
+
+    files = {
+        path: stats
+        for path, stats in by_file.items()
+        if path not in ("header", "SUM")
+    }
+    summary = by_lang.get("SUM") or by_file.get("SUM") or {}
+    langs = {
+        lang: stats
+        for lang, stats in by_lang.items()
+        if lang not in ("header", "SUM")
+    }
+    return summary, langs, files
