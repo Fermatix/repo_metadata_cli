@@ -31,4 +31,4 @@ repo-metadata = "repo_metadata_cli.cli:app"
 where = ["src"]
 
 [tool.setuptools.package-data]
-repo_metadata_cli = ["py.typed"]
+repo_metadata_cli = ["py.typed", "scripts/*.sh"]
