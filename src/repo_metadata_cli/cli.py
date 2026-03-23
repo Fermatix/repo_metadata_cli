@@ -12,6 +12,7 @@ import typer
 from .allowed_files import AllowedFiles
 from .config import AllowedFilesConfig, DEFAULT_TOKENIZER_ID, TreeSitterConfig
 from .analyzer import RepoAnalyzer
+from .fetcher import fetch_bundles
 from .token_stats import TokenizerProvider
 from .tree_sitter_support import TreeSitterManager
 from .settings import load_app_settings, update_extensions_config
@@ -76,7 +77,14 @@ def main(
 
 @app.command()
 def metadata(
-    dataset_dir: Path = typer.Argument(..., exists=True, file_okay=False, dir_okay=True, readable=True, help="Directory with *.bundle files."),
+    dataset_path: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=True,
+        dir_okay=True,
+        readable=True,
+        help="Directory with *.bundle files, or a .txt file with repository URLs (one per line).",
+    ),
     output_csv: Path = typer.Option(Path("repo_metadata.csv"), help="Where to store metadata CSV."),
     config_file: Path = typer.Option(Path("repo_metadata.toml"), help="TOML config file path."),
     skip_tree_sitter: bool = typer.Option(False, help="Skip Tree-sitter metrics (avg function length)."),
@@ -85,14 +93,46 @@ def metadata(
         "--include-lang",
         help="Comma-separated list of languages to pass to cloc; overrides [files].include_languages.",
     ),
-    by_partners_folders: bool = typer.Option(
-        False,
-        "--by-partners-folders/--no-by-partners-folders",
-        "--by-partners_folders/--no-by-partners_folders",
-        help="Искать *.bundle в dataset_dir/<partner>/* (2-й уровень вложенности); по умолчанию сканируется сам dataset_dir.",
+    bundles_dir: Path = typer.Option(
+        Path("./tmp/bundles"),
+        help="Where to store fetched *.bundle files (only used when dataset_path is a .txt file).",
+    ),
+    mirrors_dir: Path = typer.Option(
+        Path("./tmp/mirrors"),
+        help="Where to store bare-mirror clones (only used when dataset_path is a .txt file).",
+    ),
+    ok_file: Path = typer.Option(
+        Path("./tmp/fetched_repos.txt"),
+        help="File that records successfully fetched repo URLs (only used when dataset_path is a .txt file).",
+    ),
+    gitlab_token: Optional[str] = typer.Option(
+        None,
+        "--gitlab-token",
+        envvar="GITLAB_TOKEN",
+        help="Personal access token for private repositories (also read from $GITLAB_TOKEN).",
+        show_default=False,
     ),
 ) -> None:
-    """Compute metadata (no token counts) for all bundles in a dataset directory."""
+    """Compute metadata for all bundles in a directory, or fetch + analyze from a repos .txt file."""
+    if dataset_path.is_file():
+        if dataset_path.suffix.lower() != ".txt":
+            logger.error("When passing a file, it must be a .txt file with repository URLs.")
+            raise typer.Exit(code=1)
+        try:
+            fetch_bundles(
+                repos_file=dataset_path,
+                bundles_dir=bundles_dir,
+                mirrors_dir=mirrors_dir,
+                ok_file=ok_file,
+                gitlab_token=gitlab_token,
+            )
+        except (FileNotFoundError, RuntimeError) as exc:
+            logger.error("Fetch step failed: %s", exc)
+            raise typer.Exit(code=1) from exc
+        dataset_dir = bundles_dir
+    else:
+        dataset_dir = dataset_path
+
     settings = load_app_settings(config_file)
     ts_config = TreeSitterConfig(
         extension_language_map=settings.tree_sitter.extension_language_map,
@@ -217,6 +257,7 @@ def refresh_allowed_files(
     allowed_exts = sorted(ext_map.keys())
     update_extensions_config(config_file, allowed_exts, ext_map, {})
     logger.info("Updated allowed_extensions in %s", config_file)
+
 
 
 if __name__ == "__main__":
