@@ -10,7 +10,7 @@ import tempfile
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 from tqdm import tqdm
@@ -85,6 +85,7 @@ class RepoAnalyzer:
         default_factory=lambda: TokenizerProvider(DEFAULT_TOKENIZER_ID)
     )
     cloc_languages: Optional[List[str]] = None
+    cloc_excluded_extensions: Optional[List[str]] = None
 
     def _clone_bundle(self, bundle_path: Path, dest_dir: Path) -> Optional[Path]:
         repo_dir = dest_dir / bundle_path.stem
@@ -140,13 +141,14 @@ class RepoAnalyzer:
         )
         return result.returncode == 0
 
-    def analyze_repo_metadata(self, bundle_path: Path) -> Dict[str, Any]:
+    def analyze_repo_metadata(self, bundle_path: Path, partner: str = "") -> Dict[str, Any]:
         """
         Compute repository metadata excluding token counts.
         """
         logger.debug("Processing metadata for %s", bundle_path.name)
         data: Dict[str, Any] = {
             "repo_id": str(uuid.uuid4()),
+            "partner": partner or "",
             "repo_name": bundle_path.stem,
             "languages": "",
             "extensions": "",
@@ -215,7 +217,7 @@ class RepoAnalyzer:
                 data["raw_loc"] = int(raw_code) + int(raw_comment)
 
             summary, langs, files_by_path = get_cloc_stats_by_file_and_lang(
-                repo_dir, self.cloc_languages
+                repo_dir, self.cloc_languages, self.cloc_excluded_extensions
             )
             if summary:
                 n_files = summary.get("nFiles", 0)
@@ -278,13 +280,14 @@ class RepoAnalyzer:
 
         return data
 
-    def analyze_repo_tokens(self, bundle_path: Path) -> Dict[str, Any]:
+    def analyze_repo_tokens(self, bundle_path: Path, partner: str = "") -> Dict[str, Any]:
         """
         Compute token counts for all commits and last commit snapshot.
         """
         logger.debug("Processing token stats for %s", bundle_path.name)
         data = {
             "repo_name": bundle_path.stem,
+            "partner": partner or "",
             "deepseek_token_count_all_commits": 0,
             "deepseek_token_count_last_commit": 0,
         }
@@ -338,7 +341,7 @@ class RepoAnalyzer:
 
         return data
 
-    def _processed_repos(self, csv_path: Path) -> Set[str]:
+    def _processed_repos(self, csv_path: Path) -> Set[Tuple[str, str]]:
         if not csv_path.exists():
             logger.info("%s will be created from scratch.", csv_path)
             return set()
@@ -351,31 +354,57 @@ class RepoAnalyzer:
         if existing_df.empty or "repo_name" not in existing_df.columns:
             logger.info("%s exists but is empty/invalid; recomputing all entries.", csv_path)
             return set()
-        processed = set(existing_df["repo_name"].astype(str))
+        partner_col = "partner" if "partner" in existing_df.columns else None
+        processed: Set[Tuple[str, str]] = set()
+        for _, row in existing_df.iterrows():
+            repo_name = str(row.get("repo_name", "")).strip()
+            partner_val = ""
+            if partner_col:
+                raw_partner = row.get(partner_col, "")
+                if pd.notna(raw_partner):
+                    partner_val = str(raw_partner).strip()
+            processed.add((repo_name, partner_val))
         logger.info("%s already contains %d repositories.", csv_path, len(processed))
         return processed
+
+    def _collect_bundle_entries(
+        self, dataset_dir: Path, by_partners_folders: bool
+    ) -> List[Tuple[Path, str]]:
+        if not dataset_dir.exists():
+            return []
+
+        if by_partners_folders:
+            entries: List[Tuple[Path, str]] = []
+            for partner_dir in sorted(p for p in dataset_dir.iterdir() if p.is_dir()):
+                for bundle_path in sorted(partner_dir.glob("*/*.bundle")):
+                    entries.append((bundle_path, partner_dir.name))
+            return entries
+
+        return [(path, "") for path in sorted(dataset_dir.rglob("*.bundle"))]
 
     def _process_bundles(
         self,
         dataset_dir: Path,
         csv_path: Path,
         desc: str,
-        analyze_fn: Callable[[Path], Dict[str, Any]],
+        analyze_fn: Callable[[Path, str], Dict[str, Any]],
+        by_partners_folders: bool,
     ) -> None:
-        bundle_files = sorted(dataset_dir.rglob("*.bundle"))
-        logger.info("Found %d bundle files under %s", len(bundle_files), dataset_dir)
-        if not bundle_files:
+        bundle_entries = self._collect_bundle_entries(dataset_dir, by_partners_folders)
+        logger.info("Found %d bundle files under %s", len(bundle_entries), dataset_dir)
+        if not bundle_entries:
             logger.warning("No *.bundle files found under %s; nothing to process.", dataset_dir)
             return
         processed = self._processed_repos(csv_path)
 
-        for bundle_path in tqdm(bundle_files, desc=desc):
+        for bundle_path, partner in tqdm(bundle_entries, desc=desc):
             repo_name = bundle_path.stem
-            if repo_name in processed:
+            key = (repo_name, partner or "")
+            if key in processed:
                 logger.debug("Skipping %s (already processed)", repo_name)
                 continue
 
-            row = analyze_fn(bundle_path)
+            row = analyze_fn(bundle_path, partner)
             row_df = pd.DataFrame([row])
             row_df.to_csv(
                 csv_path,
@@ -383,17 +412,33 @@ class RepoAnalyzer:
                 header=not csv_path.exists(),
                 index=False,
             )
-            processed.add(repo_name)
+            processed.add(key)
 
         logger.info("%s pipeline finished; %d repositories processed.", desc, len(processed))
 
-    def run_metadata_pipeline(self, dataset_dir: Path, csv_metadata_path: Path) -> None:
-        self._process_bundles(dataset_dir, csv_metadata_path, "Metadata", self.analyze_repo_metadata)
+    def run_metadata_pipeline(
+        self, dataset_dir: Path, csv_metadata_path: Path, by_partners_folders: bool = False
+    ) -> None:
+        self._process_bundles(
+            dataset_dir,
+            csv_metadata_path,
+            "Metadata",
+            self.analyze_repo_metadata,
+            by_partners_folders,
+        )
 
-    def run_tokens_pipeline(self, dataset_dir: Path, csv_tokens_path: Path) -> None:
+    def run_tokens_pipeline(
+        self, dataset_dir: Path, csv_tokens_path: Path, by_partners_folders: bool = False
+    ) -> None:
         if self.tokenizer_provider is None:
             logger.warning("Tokenizer provider is not configured; token stats will be zeros.")
-        self._process_bundles(dataset_dir, csv_tokens_path, "Tokens", self.analyze_repo_tokens)
+        self._process_bundles(
+            dataset_dir,
+            csv_tokens_path,
+            "Tokens",
+            self.analyze_repo_tokens,
+            by_partners_folders,
+        )
 
     @staticmethod
     def merge_metadata_and_tokens(
@@ -405,6 +450,9 @@ class RepoAnalyzer:
 
         df_meta = pd.read_csv(csv_metadata_path)
         df_tokens = pd.read_csv(csv_tokens_path)
+
+        if "partner" in df_tokens.columns:
+            df_tokens = df_tokens.drop(columns=["partner"])
 
         df = pd.merge(df_meta, df_tokens, on="repo_name", how="left")
         df.to_csv(output_file, index=False)
