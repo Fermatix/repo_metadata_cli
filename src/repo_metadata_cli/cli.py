@@ -112,27 +112,14 @@ def metadata(
         help="Personal access token for private repositories (also read from $GITLAB_TOKEN).",
         show_default=False,
     ),
+    by_partners_folders: bool = typer.Option(
+        False,
+        "--by-partners-folders/--no-by-partners-folders",
+        "--by-partners_folders/--no-by-partners_folders",
+        help="Search *.bundle in dataset_dir/<partner>/* (2nd nesting level); ignored when dataset_path is a .txt file.",
+    ),
 ) -> None:
     """Compute metadata for all bundles in a directory, or fetch + analyze from a repos .txt file."""
-    if dataset_path.is_file():
-        if dataset_path.suffix.lower() != ".txt":
-            logger.error("When passing a file, it must be a .txt file with repository URLs.")
-            raise typer.Exit(code=1)
-        try:
-            fetch_bundles(
-                repos_file=dataset_path,
-                bundles_dir=bundles_dir,
-                mirrors_dir=mirrors_dir,
-                ok_file=ok_file,
-                gitlab_token=gitlab_token,
-            )
-        except (FileNotFoundError, RuntimeError) as exc:
-            logger.error("Fetch step failed: %s", exc)
-            raise typer.Exit(code=1) from exc
-        dataset_dir = bundles_dir
-    else:
-        dataset_dir = dataset_path
-
     settings = load_app_settings(config_file)
     ts_config = TreeSitterConfig(
         extension_language_map=settings.tree_sitter.extension_language_map,
@@ -154,7 +141,25 @@ def metadata(
         cloc_languages=cloc_languages,
         cloc_excluded_extensions=cloc_excluded_extensions,
     )
-    analyzer.run_metadata_pipeline(dataset_dir, output_csv, by_partners_folders)
+
+    if dataset_path.is_file():
+        if dataset_path.suffix.lower() != ".txt":
+            logger.error("When passing a file, it must be a .txt file with repository URLs.")
+            raise typer.Exit(code=1)
+        try:
+            fetch_bundles(
+                repos_file=dataset_path,
+                bundles_dir=bundles_dir,
+                mirrors_dir=mirrors_dir,
+                ok_file=ok_file,
+                gitlab_token=gitlab_token,
+            )
+        except (FileNotFoundError, RuntimeError) as exc:
+            logger.error("Fetch step failed: %s", exc)
+            raise typer.Exit(code=1) from exc
+        analyzer.run_metadata_pipeline(bundles_dir, output_csv, False)
+    else:
+        analyzer.run_metadata_pipeline(dataset_path, output_csv, by_partners_folders)
 
 
 @app.command()
