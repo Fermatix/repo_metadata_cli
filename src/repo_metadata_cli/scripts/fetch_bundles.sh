@@ -86,7 +86,7 @@ repo_only_name() {
   echo "$base"
 }
 
-while IFS= read -r repo; do
+while IFS= read -r repo || [[ -n "$repo" ]]; do
   [[ -z "${repo// }" ]] && continue
   [[ "$repo" =~ ^# ]] && continue
 
