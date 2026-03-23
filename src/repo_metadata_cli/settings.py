@@ -23,6 +23,7 @@ class FilesSettings:
     allowed_extensions: Optional[Set[str]] = None
     allowed_filenames: Optional[Set[str]] = None
     include_languages: Optional[List[str]] = None
+    excluded_extensions: Optional[List[str]] = None
 
 
 @dataclass
@@ -130,6 +131,16 @@ def load_app_settings(config_file: Optional[Path]) -> AppSettings:
         files_settings.include_languages = [
             str(lang).strip() for lang in include_langs if str(lang).strip()
         ]
+
+    excluded_ext = files_data.get("excluded_extensions")
+    if isinstance(excluded_ext, list):
+        cleaned: List[str] = []
+        for ext in excluded_ext:
+            ext_str = str(ext).strip()
+            if not ext_str:
+                continue
+            cleaned.append(ext_str if ext_str.startswith(".") else f".{ext_str}")
+        files_settings.excluded_extensions = cleaned
 
     # Tree-sitter
     grammar_repos = _parse_list(ts_data.get("grammar_repos"))

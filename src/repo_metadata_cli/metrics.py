@@ -279,7 +279,9 @@ def get_cloc_stats(
 
 
 def get_cloc_stats_by_file_and_lang(
-    repo_dir: Path, include_languages: List[str] | None = None
+    repo_dir: Path,
+    include_languages: List[str] | None = None,
+    exclude_extensions: List[str] | None = None,
 ) -> Tuple[
     Dict[str, Any],
     Dict[str, Dict[str, Any]],
@@ -292,11 +294,21 @@ def get_cloc_stats_by_file_and_lang(
       - langs: {language: stats}
       - files: {filepath: stats}
     """
-    cmd = ["cloc", "--json", "--by-file-by-lang", "--quiet", str(repo_dir)]
+    cmd = ["cloc", "--json", "--by-file-by-lang", "--quiet", "--no-autogen", "--skip-win-hidden", str(repo_dir)]
     if include_languages:
         langs_arg = ",".join(sorted({lang for lang in include_languages if lang}))
         if langs_arg:
             cmd.insert(-1, f"--include-lang={langs_arg}")
+    if exclude_extensions:
+        exts_clean: Set[str] = set()
+        for ext in exclude_extensions:
+            ext_str = str(ext).strip()
+            if not ext_str:
+                continue
+            exts_clean.add(ext_str.lstrip("."))
+        exts_arg = ",".join(sorted(exts_clean))
+        if exts_arg:
+            cmd.insert(-1, f"--exclude-ext={exts_arg}")
 
     cloc_out = run_cmd(cmd)
     if not cloc_out:

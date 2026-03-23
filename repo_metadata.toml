@@ -49,6 +49,18 @@ allowed_filenames = [
     "CMakeLists.txt",
 ]
 
+excluded_extensions = [
+    ".mm", ".jsx", ".mjs", ".plantuml", ".stub", ".cginc", ".sc",
+    ".cjs", ".phar", ".pyx", ".workspace",
+    ".pac", ".pxd", ".pro", ".m", ".sol", ".fastcgi", ".pde",
+    ".bzl", ".nix", ".dist", ".sbt", ".idl", ".cc",
+    ".coffee", ".mts", ".gypi", ".x", ".inc", ".shader", ".gyp", ".phps",
+    ".p8", ".bat", ".mo", ".frag", ".jbuilder", ".csh",
+    ".podspec", ".11", ".gemspec", ".god", ".ps1", ".pyi", ".sh_backup", ".vert",
+    ".watchr", ".exp", ".tsx", ".ipp", ".tab",
+    ".hlsl", ".psm1", ".mli", ".bazel",
+]
+
 include_languages = [
   "ABAP",
   "ActionScript",

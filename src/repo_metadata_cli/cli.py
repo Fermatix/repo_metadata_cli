@@ -29,6 +29,7 @@ def _build_analyzer(
     tokenizers_parallelism: Optional[bool],
     tokenizers_max_length: Optional[int],
     cloc_languages: Optional[List[str]],
+    cloc_excluded_extensions: Optional[List[str]],
 ) -> RepoAnalyzer:
     allowed_files = AllowedFiles(
         AllowedFilesConfig(
@@ -54,6 +55,7 @@ def _build_analyzer(
         tree_sitter=ts_manager,
         tokenizer_provider=tokenizer_provider,
         cloc_languages=cloc_languages,
+        cloc_excluded_extensions=cloc_excluded_extensions,
     )
 
 
@@ -83,6 +85,12 @@ def metadata(
         "--include-lang",
         help="Comma-separated list of languages to pass to cloc; overrides [files].include_languages.",
     ),
+    by_partners_folders: bool = typer.Option(
+        False,
+        "--by-partners-folders/--no-by-partners-folders",
+        "--by-partners_folders/--no-by-partners_folders",
+        help="Искать *.bundle в dataset_dir/<partner>/* (2-й уровень вложенности); по умолчанию сканируется сам dataset_dir.",
+    ),
 ) -> None:
     """Compute metadata (no token counts) for all bundles in a dataset directory."""
     settings = load_app_settings(config_file)
@@ -95,6 +103,7 @@ def metadata(
         [part.strip() for part in include_lang.split(",") if part.strip()] if include_lang else None
     )
     cloc_languages = cli_langs or settings.files.include_languages
+    cloc_excluded_extensions = settings.files.excluded_extensions
     analyzer = _build_analyzer(
         config_file=config_file,
         ts_config=ts_config,
@@ -103,8 +112,9 @@ def metadata(
         tokenizers_parallelism=None,
         tokenizers_max_length=None,
         cloc_languages=cloc_languages,
+        cloc_excluded_extensions=cloc_excluded_extensions,
     )
-    analyzer.run_metadata_pipeline(dataset_dir, output_csv)
+    analyzer.run_metadata_pipeline(dataset_dir, output_csv, by_partners_folders)
 
 
 @app.command()
@@ -115,6 +125,12 @@ def tokens(
     tokenizer_id: Optional[str] = typer.Option(
         None,
         help="HF tokenizer id to use. Defaults to [tokens.tokenizer_id] in TOML, then $TOKENIZER_ID.",
+    ),
+    by_partners_folders: bool = typer.Option(
+        False,
+        "--by-partners-folders/--no-by-partners-folders",
+        "--by-partners_folders/--no-by-partners_folders",
+        help="Искать *.bundle в dataset_dir/<partner>/* (2-й уровень вложенности); по умолчанию сканируется сам dataset_dir.",
     ),
 ) -> None:
     """Compute token statistics for all bundles in a dataset directory."""
@@ -133,8 +149,9 @@ def tokens(
         tokenizers_parallelism=settings.tokens.parallelism,
         tokenizers_max_length=settings.tokens.max_length,
         cloc_languages=settings.files.include_languages,
+        cloc_excluded_extensions=settings.files.excluded_extensions,
     )
-    analyzer.run_tokens_pipeline(dataset_dir, output_csv)
+    analyzer.run_tokens_pipeline(dataset_dir, output_csv, by_partners_folders)
 
 
 @app.command()

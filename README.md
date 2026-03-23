@@ -34,6 +34,7 @@ All settings reside in a TOML file (default: `repo_metadata.toml` in the working
   - `allowed_extensions`: list of extensions treated as code. If omitted, `tree_sitter.extension_language_map` keys are used.
   - `allowed_filenames`: extensionless filenames that are always included (e.g., Makefile, Dockerfile).
   - `include_languages`: optional list of language names to pass to cloc (`--include-lang`). When set, LOC and language distribution are computed only for these languages (overridable via `--include-lang` CLI flag).
+  - `excluded_extensions`: optional list of extensions passed to cloc as `--exclude-ext` for LOC counting (metadata command).
 - `[tree_sitter]`
   - `language_packages`: Python packages with grammars installable via `fetch-grammars`.
   - `extension_language_map`: mapping from file extension to language (keys normalized to lowercase with a dot).
@@ -54,8 +55,10 @@ uv run repo-metadata metadata /path/to/dataset \
   --config-file repo_metadata.toml
 ```
 - Scans all `*.bundle` files under `dataset_dir`, clones each into a temporary directory, computes metrics, and appends them to the CSV.
+- Set `--by-partners-folders` when bundles live under `dataset_dir/<partner>/*` (e.g., `dataset_dir/acme/bundles/foo.bundle`); the partner name is stored in the `partner` column. By default, the tool scans `dataset_dir` directly (`--no-by-partners-folders`).
 - Working tree metrics (cloc, duplication, avg_func_length, README, language distribution) are computed on the branch that contains the most recent commit (that branch is checked out before measurement).
 - Use `--include-lang=Python,TypeScript` to restrict cloc/LOC to those languages (overrides `[files].include_languages`).
+- LOC counting uses cloc with `--no-autogen --skip-win-hidden` and applies `[files].excluded_extensions` as `--exclude-ext`.
 - The `--skip-tree-sitter` flag disables average function length computation.
 
 ### Tokens
@@ -65,6 +68,7 @@ uv run repo-metadata tokens /path/to/dataset \
   --config-file repo_metadata.toml \
   --tokenizer-id deepseek-ai/deepseek-coder-6.7b-base
 ```
+- `--by-partners-folders` also applies to token counting; otherwise, bundles are read directly from `dataset_dir`.
 - If `--tokenizer-id` is omitted and `TOKENIZER_ID` is not set, token counts are skipped.
 - Added-line tokens are collected only for the most recent commit (tip of the freshest branch), and snapshot tokens use that branch's working tree.
 - The tokenizer is resolved via `transformers`; without the package or internet access, tokenization is skipped.
@@ -82,6 +86,7 @@ uv run repo-metadata merge repo_metadata.csv repo_tokens.csv \
 | field_name | type | description | examples_or_rules |
 | --- | --- | --- | --- |
 | repo_id | string (UUID) | Primary key; randomly generated per repository during metadata extraction. | c2f9d1e8-9a41-4f72-9a8b-1f0f4f12e6a3 |
+| partner | string | Partner folder name when `--by-partners-folders` is enabled; empty otherwise. | acme-corp |
 | repo_name | string | Repository name (bundle stem); used as the key for `merge`. | openai/gym |
 | languages | stringified JSON | Language distribution by share of LoC; JSON of the form `{lang: share}`. | {"Python":0.72,"C++":0.18} |
 | extensions | stringified JSON | Extension distribution by share of LoC (after `include_languages`/`--include-lang` filters); JSON of the form `{ext: share}`. | {".py":0.82,".ts":0.18} |
