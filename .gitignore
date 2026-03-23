@@ -31,3 +31,7 @@ htmlcov/
 
 # CLI outputs
 *.csv
+
+# Repo artifacts
+tmp/
+repos.txt

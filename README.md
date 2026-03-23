@@ -76,13 +76,14 @@ uv run repo-metadata metadata repos.txt \
 - LOC counting uses cloc with `--no-autogen --skip-win-hidden` and applies `[files].excluded_extensions` as `--exclude-ext`.
 - The `--skip-tree-sitter` flag disables average function length computation.
 
-**Options for `.txt` mode:**
+**Additional options:**
 | Option | Default | Description |
 | --- | --- | --- |
-| `--bundles-dir` | `./tmp/bundles` | Where to write fetched `*.bundle` files. |
-| `--mirrors-dir` | `./tmp/mirrors` | Where to keep bare-mirror clones. |
-| `--ok-file` | `./tmp/fetched_repos.txt` | File that records successfully fetched URLs. |
-| `--gitlab-token` / `$GITLAB_TOKEN` | — | Personal access token for private repositories. |
+| `--by-partners-folders` | `false` | Search `*.bundle` in `dataset_dir/<partner>/*` (2nd nesting level); the subdirectory name becomes the `partner` column. Ignored when `dataset_path` is a `.txt` file. |
+| `--bundles-dir` | `./tmp/bundles` | Where to write fetched `*.bundle` files (`.txt` mode only). |
+| `--mirrors-dir` | `./tmp/mirrors` | Where to keep bare-mirror clones (`.txt` mode only). |
+| `--ok-file` | `./tmp/fetched_repos.txt` | File that records successfully fetched URLs (`.txt` mode only). |
+| `--gitlab-token` / `$GITLAB_TOKEN` | — | Personal access token for private repositories (`.txt` mode only). |
 
 **Example `repos.txt`:**
 ```
