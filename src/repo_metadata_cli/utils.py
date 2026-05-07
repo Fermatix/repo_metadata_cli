@@ -39,7 +39,7 @@ def run_cmd(cmd: List[str], cwd: Optional[Path] = None) -> str:
             stderr=subprocess.DEVNULL,
         )
         return result.decode("utf-8", errors="replace").strip()
-    except subprocess.CalledProcessError as exc:
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
         logging.getLogger(__name__).debug("Command failed: %s (%s)", " ".join(cmd), exc)
         return ""
 

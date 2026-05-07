@@ -21,20 +21,20 @@ class TreeSitterManager:
         self.config = config or TreeSitterConfig()
         self._languages: Dict[str, object] = {}
         self._parsers: Dict[str, Parser] = {}
+        self._failed_langs: set[str] = set()  # languages that failed to load — skip on retry
 
     def _ensure_languages(self) -> None:
         needed_langs = sorted(set(self.config.extension_language_map.values()))
 
         for lang in needed_langs:
-            if lang in self._languages:
+            if lang in self._languages or lang in self._failed_langs:
                 continue
             try:
                 self._languages[lang] = get_language(lang)
                 self._parsers[lang] = get_parser(lang)
             except Exception as exc:
                 logger.warning("Failed to initialize Tree-sitter language %s: %s", lang, exc)
-                continue
-
+                self._failed_langs.add(lang)
 
     def parser_for_suffix(self, suffix: str) -> Optional[Tuple[Parser, set[str]]]:
         """
@@ -47,10 +47,14 @@ class TreeSitterManager:
             logger.debug("No language mapping configured for suffix %s", suffix)
             return None
 
+        if lang_name in self._failed_langs:
+            return None
+
         func_node_types = self.config.lang_func_node_types.get(lang_name)
         if not func_node_types:
             logger.debug("No function node types configured for language %s", lang_name)
             return None
+
         parser = self._parsers.get(lang_name)
         if parser is None:
             try:
@@ -58,6 +62,7 @@ class TreeSitterManager:
                 self._parsers[lang_name] = parser
             except Exception as exc:
                 logger.warning("Failed to create parser for %s: %s", lang_name, exc)
+                self._failed_langs.add(lang_name)
                 return None
 
         return parser, func_node_types

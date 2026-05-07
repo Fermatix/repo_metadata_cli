@@ -11,241 +11,85 @@ allowed_extensions = [
     ".cs",
     ".css",
     ".cxx",
+    ".d",
+    ".dart",
     ".ebuild",
     ".eclass",
+    ".elm",
+    ".erl",
+    ".ex",
+    ".exs",
+    ".f",
+    ".f03",
+    ".f08",
+    ".f77",
+    ".f90",
+    ".f95",
+    ".for",
+    ".frag",
+    ".fs",
+    ".fsi",
+    ".fsx",
+    ".gd",
+    ".gleam",
+    ".glsl",
     ".go",
     ".h",
+    ".hlsl",
     ".hpp",
+    ".hrl",
     ".hs",
     ".hs-boot",
     ".html",
     ".hxx",
     ".java",
     ".jl",
+    ".js",
     ".jsdoc",
     ".json",
     ".jsx",
+    ".kt",
+    ".kts",
+    ".lua",
+    ".m",
     ".mjs",
     ".ml",
     ".mli",
+    ".mm",
+    ".nim",
+    ".nix",
+    ".odin",
+    ".pas",
     ".php",
+    ".pl",
+    ".pm",
+    ".pp",
+    ".ps1",
     ".py",
+    ".r",
     ".rb",
     ".rs",
     ".sbt",
     ".scala",
     ".sh",
+    ".sol",
     ".sv",
     ".svh",
+    ".swift",
     ".toml",
     ".ts",
     ".tsx",
     ".v",
+    ".vert",
+    ".vim",
+    ".wgsl",
+    ".zig",
 ]
 allowed_filenames = [
     "Makefile",
     "Dockerfile",
     "docker-compose.yml",
     "CMakeLists.txt",
-]
-
-include_languages = [
-  "ABAP",
-  "ActionScript",
-  "Ada",
-  "Agda",
-  "AMPLE",
-  "AnsProlog",
-  "Apex Class",
-  "Apex Trigger",
-  "APL",
-  "AppleScript",
-  "Arduino Sketch",
-  "ArkTs",
-  "Arturo",
-  "ASP",
-  "AspectJ",
-  "Assembly",
-  "Astro",
-  "AutoHotkey",
-  "awk",
-  "Bourne Again Shell",
-  "Bourne Shell",
-  "BrightScript",
-  "C",
-  "C Shell",
-  "C#",
-  "C++",
-  "Carbon",
-  "Chapel",
-  "Civet",
-  "Clarity",
-  "Clean",
-  "Clojure",
-  "ClojureC",
-  "ClojureScript",
-  "COBOL",
-  "Coq",
-  "CoffeeScript",
-  "ColdFusion",
-  "ColdFusion CFScript",
-  "Crystal",
-  "CUDA",
-  "Cython",
-  "D",
-  "Dafny",
-  "DAL",
-  "Dart",
-  "DenizenScript",
-  "Derw",
-  "DIET",
-  "DOORS Extension Language",
-  "DOS Batch",
-  "dtrace",
-  "Drools",
-  "Elixir",
-  "Elm",
-  "Erlang",
-  "Expect",
-  "F#",
-  "F# Script",
-  "Fennel",
-  "Fish Shell",
-  "Focus",
-  "Forth",
-  "Fortran 77",
-  "Fortran 90",
-  "Fortran 95",
-  "Futhark",
-  "GDScript",
-  "Gleam",
-  "GLSL",
-  "Go",
-  "Godot Shaders",
-  "Gradle",
-  "Groovy",
-  "Harbour",
-  "Hare",
-  "Haskell",
-  "Haxe",
-  "HLSL",
-  "HolyC",
-  "Hoon",
-  "IDL",
-  "Idris",
-  "Igor Pro",
-  "Imba",
-  "IPL",
-  "Jai",
-  "Janet",
-  "Java",
-  "JavaScript",
-  "JCL",
-  "JSX",
-  "Julia",
-  "Kermit",
-  "Korn Shell",
-  "Kotlin",
-  "kvlang",
-  "Lean",
-  "Lem",
-  "LFE",
-  "Lisp",
-  "Literate Idris",
-  "LiveLink OScript",
-  "Logos",
-  "Logtalk",
-  "Lua",
-  "Luau",
-  "Magik",
-  "Mathematica",
-  "MATLAB",
-  "Metal",
-  "Modelica",
-  "Modula3",
-  "Mojo",
-  "MoonBit",
-  "MUMPS",
-  "NASTRAN DMAP",
-  "Nemerle",
-  "NetLogo",
-  "Nim",
-  "Nix",
-  "Objective-C",
-  "Objective-C++",
-  "OCaml",
-  "Odin",
-  "OpenCL",
-  "OpenSCAD",
-  "Oracle PL/SQL",
-  "P4",
-  "Pascal",
-  "Pascal/Pawn",
-  "Patran Command Language",
-  "Pawn",
-  "Perl",
-  "PHP",
-  "Pig Latin",
-  "PL/I",
-  "PL/M",
-  "PlantUML",
-  "Pony",
-  "PowerBuilder",
-  "PowerShell",
-  "Processing",
-  "Prolog",
-  "Python",
-  "R",
-  "Racket",
-  "Raku",
-  "RapydScript",
-  "ReasonML",
-  "ReScript",
-  "Rexx",
-  "Ring",
-  "RobotFramework",
-  "Ruby",
-  "Rust",
-  "SAS",
-  "Scala",
-  "Scheme",
-  "sed",
-  "SKILL",
-  "SKILL++",
-  "Smalltalk",
-  "Solidity",
-  "SparForte",
-  "Specman e",
-  "SQL",
-  "SQL Stored Procedure",
-  "Squirrel",
-  "Standard ML",
-  "Starlark",
-  "Stata",
-  "Swift",
-  "Tcl/Tk",
-  "TEAL",
-  "TLA+",
-  "TTCN",
-  "TypeScript",
-  "Umka",
-  "Vala",
-  "VBA",
-  "Verilog-SystemVerilog",
-  "VHDL",
-  "vim script",
-  "Visual Basic",
-  "Visual Basic .NET",
-  "Visual Fox Pro",
-  "VBScript",
-  "Vyper",
-  "WebAssembly",
-  "WGSL",
-  "X++",
-  "XQuery",
-  "Xtend",
-  "Zig",
-  "zsh"
 ]
 
 [tree_sitter]
@@ -339,7 +183,6 @@ language_packages = [
     "tree-sitter-magik",
     "tree-sitter-make",
     "tree-sitter-markdown",
-    "tree-sitter-markdown",
     "tree-sitter-matlab",
     "tree-sitter-mermaid",
     "tree-sitter-meson",
@@ -364,7 +207,6 @@ language_packages = [
     "tree-sitter-prisma",
     "tree-sitter-properties",
     "tree-sitter-proto",
-    "tree-sitter-csv",
     "tree-sitter-puppet",
     "tree-sitter-purescript",
     "tree-sitter-pymanifest",
@@ -401,10 +243,8 @@ language_packages = [
     "tree-sitter-test",
     "tree-sitter-thrift",
     "tree-sitter-toml",
-    "tree-sitter-csv",
     "tree-sitter-typescript",
     "tree-sitter-twig",
-    "tree-sitter-typescript",
     "tree-sitter-typst",
     "tree-sitter-udev",
     "tree-sitter-ungrammar",
@@ -422,136 +262,142 @@ language_packages = [
     "tree-sitter-yuck",
     "tree-sitter-zig",
 ]
-vendor_dir = "vendor"
 
 [tree_sitter.extension_language_map]
 ".agda" = "agda"
-".sh" = "bash"
 ".bash" = "bash"
-".bashrc" = "bash"
 ".bash_profile" = "bash"
+".bashrc" = "bash"
+".c" = "c"
+".cc" = "cpp"
+".cjs" = "javascript"
+".cpp" = "cpp"
+".cs" = "csharp"
+".css" = "css"
+".cxx" = "cpp"
+".d" = "d"
+".dart" = "dart"
 ".ebuild" = "bash"
 ".eclass" = "bash"
-".c" = "c"
-".h" = "cpp"
-".cs" = "csharp"
-".cc" = "cpp"
-".cpp" = "cpp"
-".cxx" = "cpp"
-".hpp" = "cpp"
-".hxx" = "cpp"
-".css" = "css"
+".elm" = "elm"
+".erl" = "erlang"
+".ex" = "elixir"
+".exs" = "elixir"
+".f" = "fortran"
+".f03" = "fortran"
+".f08" = "fortran"
+".f77" = "fortran"
+".f90" = "fortran"
+".f95" = "fortran"
+".for" = "fortran"
+".frag" = "glsl"
+".fs" = "fsharp"
+".fsi" = "fsharp"
+".fsx" = "fsharp"
+".gd" = "gdscript"
+".gleam" = "gleam"
+".glsl" = "glsl"
 ".go" = "go"
+".h" = "cpp"
+".hlsl" = "hlsl"
+".hpp" = "cpp"
+".hrl" = "erlang"
 ".hs" = "haskell"
 ".hs-boot" = "haskell"
 ".html" = "html"
+".hxx" = "cpp"
 ".java" = "java"
-".mjs" = "javascript"
-".cjs" = "javascript"
-".jsx" = "javascript"
-".json" = "json"
 ".jl" = "julia"
+".js" = "javascript"
+".jsdoc" = "jsdoc"
+".json" = "json"
+".jsx" = "javascript"
+".kt" = "kotlin"
+".kts" = "kotlin"
+".lua" = "lua"
+".m" = "objc"
+".mjs" = "javascript"
 ".ml" = "ocaml"
 ".mli" = "ocaml_interface"
+".mm" = "objc"
+".nim" = "nim"
+".nix" = "nix"
+".odin" = "odin"
+".pas" = "pascal"
 ".php" = "php"
+".pl" = "perl"
+".pm" = "perl"
+".pp" = "pascal"
+".ps1" = "powershell"
 ".py" = "python"
+".r" = "r"
 ".rb" = "ruby"
 ".rs" = "rust"
-".scala" = "scala"
 ".sbt" = "scala"
-".ts" = "typescript"
-".tsx" = "tsx"
-".jsdoc" = "jsdoc"
-".toml" = "toml"
-".v" = "verilog"
+".scala" = "scala"
+".sh" = "bash"
+".sol" = "solidity"
 ".sv" = "verilog"
 ".svh" = "verilog"
+".swift" = "swift"
+".toml" = "toml"
+".ts" = "typescript"
+".tsx" = "tsx"
+".v" = "verilog"
+".vert" = "glsl"
+".vim" = "vim"
+".wgsl" = "wgsl"
+".zig" = "zig"
 
 [tree_sitter.lang_func_node_types]
-python = [
-    "function_definition",
-]
-javascript = [
-    "function_declaration",
-    "method_definition",
-]
-typescript = [
-    "function_declaration",
-    "method_definition",
-]
-tsx = [
-    "function_declaration",
-    "method_definition",
-]
-java = [
-    "method_declaration",
-    "constructor_declaration",
-]
-kotlin = [
-    "function_declaration",
-]
-go = [
-    "function_declaration",
-    "method_declaration",
-]
-rust = [
-    "function_item",
-]
-c = [
-    "function_definition",
-]
-cpp = [
-    "function_definition",
-]
-c_sharp = [
-    "method_declaration",
-]
-php = [
-    "function_declaration",
-    "method_declaration",
-]
-ruby = [
-    "method",
-    "singleton_method",
-]
-swift = [
-    "function_declaration",
-]
-scala = [
-    "function_definition",
-]
 agda = []
-bash = [
-    "function_definition",
-]
+bash = ["function_definition"]
+c = ["function_definition"]
+cpp = ["function_definition"]
+csharp = ["method_declaration", "constructor_declaration", "local_function_statement"]
 css = []
-haskell = []
+d = ["function_declaration"]
+dart = ["function_body"]
+elixir = []
+elm = ["value_declaration"]
+erlang = ["function_clause"]
+fortran = ["subroutine", "function"]
+fsharp = ["function_or_value_defn"]
+gdscript = ["function_definition"]
+gleam = ["function"]
+glsl = ["function_definition"]
+go = ["function_declaration", "method_declaration"]
+haskell = ["function"]
+hlsl = ["function_definition"]
 html = []
-julia = [
-    "function_definition",
-]
-ocaml = [
-    "value_definition",
-]
-ocaml_interface = [
-    "value_definition",
-]
-ql = [
-    "predicate_definition",
-]
-ql_dbscheme = []
-flow = [
-    "function_declaration",
-    "method_definition",
-]
+java = ["method_declaration", "constructor_declaration"]
+javascript = ["function_declaration", "function_expression", "arrow_function", "method_definition"]
+jsdoc = []
 json = []
-
-[tree_sitter.language_repo_map]
-
-[tokens]
-# Optional defaults for token counting (used by `repo-metadata tokens`).
-tokenizer_id = "deepseek-ai/deepseek-coder-6.7b-base"
-# Disable/enable HF tokenizers parallelism to avoid fork warnings.
-parallelism = true
-# Override tokenizer.model_max_length to suppress long-sequence warnings during token counting.
-max_length = 9999999999
+julia = ["function_definition"]
+kotlin = ["function_declaration"]
+lua = ["function_declaration", "function_definition"]
+nim = ["proc_declaration", "func_declaration", "method_declaration", "iterator_declaration"]
+nix = ["function_expression"]
+objc = ["function_definition", "implementation_definition"]
+ocaml = ["value_definition"]
+ocaml_interface = ["value_definition"]
+odin = ["procedure_declaration"]
+pascal = ["defProc"]
+perl = ["subroutine_declaration_statement"]
+php = ["function_definition", "method_declaration"]
+powershell = ["function_statement"]
+python = ["function_definition"]
+r = ["function_definition"]
+ruby = ["method", "singleton_method"]
+rust = ["function_item"]
+scala = ["function_definition"]
+solidity = ["function_definition"]
+swift = ["function_declaration"]
+toml = []
+tsx = ["function_declaration", "function_expression", "arrow_function", "method_definition"]
+typescript = ["function_declaration", "function_expression", "arrow_function", "method_definition"]
+verilog = []
+vim = ["function_definition"]
+wgsl = ["function_declaration"]
+zig = ["FnProto"]

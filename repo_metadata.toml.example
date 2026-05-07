@@ -1,112 +1,403 @@
-# Example configuration for repo-metadata-cli (TOML)
-
 [files]
-# Explicitly whitelist code extensions; omit to rely on inference from grammar_repos and extension_language_map.
 allowed_extensions = [
-  ".py", ".pyi",
-  ".js", ".jsx", ".ts", ".tsx",
-  ".java", ".kt", ".kts",
-  ".go", ".rs",
-  ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp",
-  ".cs",
-  ".php",
-  ".rb",
-  ".swift",
-  ".scala",
+    ".agda",
+    ".bash",
+    ".bash_profile",
+    ".bashrc",
+    ".c",
+    ".cc",
+    ".cjs",
+    ".cpp",
+    ".cs",
+    ".css",
+    ".cxx",
+    ".d",
+    ".dart",
+    ".ebuild",
+    ".eclass",
+    ".elm",
+    ".erl",
+    ".ex",
+    ".exs",
+    ".f",
+    ".f03",
+    ".f08",
+    ".f77",
+    ".f90",
+    ".f95",
+    ".for",
+    ".frag",
+    ".fs",
+    ".fsi",
+    ".fsx",
+    ".gd",
+    ".gleam",
+    ".glsl",
+    ".go",
+    ".h",
+    ".hlsl",
+    ".hpp",
+    ".hrl",
+    ".hs",
+    ".hs-boot",
+    ".html",
+    ".hxx",
+    ".java",
+    ".jl",
+    ".js",
+    ".jsdoc",
+    ".json",
+    ".jsx",
+    ".kt",
+    ".kts",
+    ".lua",
+    ".m",
+    ".mjs",
+    ".ml",
+    ".mli",
+    ".mm",
+    ".nim",
+    ".nix",
+    ".odin",
+    ".pas",
+    ".php",
+    ".pl",
+    ".pm",
+    ".pp",
+    ".ps1",
+    ".py",
+    ".r",
+    ".rb",
+    ".rs",
+    ".sbt",
+    ".scala",
+    ".sh",
+    ".sol",
+    ".sv",
+    ".svh",
+    ".swift",
+    ".toml",
+    ".ts",
+    ".tsx",
+    ".v",
+    ".vert",
+    ".vim",
+    ".wgsl",
+    ".zig",
 ]
-# Allow specific build files regardless of extension.
-allowed_filenames = ["Makefile", "Dockerfile", "docker-compose.yml", "CMakeLists.txt"]
-# unknown_extensions_path = "path/to/custom_unknown_extensions.log"  # optional; absolute or relative to this file
+allowed_filenames = [
+    "Makefile",
+    "Dockerfile",
+    "docker-compose.yml",
+    "CMakeLists.txt",
+]
 
 [tree_sitter]
-# Preferred grammars to fetch/build; this list also drives allowed_extensions inference.
-grammar_repos = [
-  "https://github.com/tree-sitter/tree-sitter-python",
-  "https://github.com/tree-sitter/tree-sitter-javascript",
-  "https://github.com/tree-sitter/tree-sitter-typescript",
-  "https://github.com/tree-sitter/tree-sitter-java",
-  "https://github.com/tree-sitter/tree-sitter-go",
-  "https://github.com/tree-sitter/tree-sitter-rust",
-  "https://github.com/tree-sitter/tree-sitter-c",
-  "https://github.com/tree-sitter/tree-sitter-cpp",
-  "https://github.com/tree-sitter/tree-sitter-c-sharp",
-  "https://github.com/tree-sitter/tree-sitter-php",
-  "https://github.com/tree-sitter/tree-sitter-ruby",
-  "https://github.com/tree-sitter/tree-sitter-swift",
-  "https://github.com/tree-sitter/tree-sitter-scala",
-  "https://github.com/tree-sitter/tree-sitter-kotlin",
+language_packages = [
+    "tree-sitter-actionscript",
+    "tree-sitter-ada",
+    "tree-sitter-agda",
+    "tree-sitter-sfapex",
+    "tree-sitter-arduino",
+    "tree-sitter-asm",
+    "tree-sitter-astro",
+    "tree-sitter-bash",
+    "tree-sitter-beancount",
+    "tree-sitter-bibtex",
+    "tree-sitter-bicep",
+    "tree-sitter-bitbake",
+    "tree-sitter-bsl",
+    "tree-sitter-c",
+    "tree-sitter-cairo",
+    "tree-sitter-capnp",
+    "tree-sitter-chatito",
+    "tree-sitter-clarity",
+    "tree-sitter-clojure",
+    "tree-sitter-cmake",
+    "tree-sitter-cobol",
+    "tree-sitter-comment",
+    "tree-sitter-commonlisp",
+    "tree-sitter-cpon",
+    "tree-sitter-cpp",
+    "tree-sitter-c-sharp",
+    "tree-sitter-css",
+    "tree-sitter-csv",
+    "tree-sitter-cuda",
+    "tree-sitter-d",
+    "tree-sitter-dart",
+    "tree-sitter-dockerfile",
+    "tree-sitter-doxygen",
+    "tree-sitter-xml",
+    "tree-sitter-elisp",
+    "tree-sitter-elixir",
+    "tree-sitter-elm",
+    "tree-sitter-embedded-template",
+    "tree-sitter-erlang",
+    "tree-sitter-fennel",
+    "tree-sitter-firrtl",
+    "tree-sitter-fish",
+    "tree-sitter-fortran",
+    "tree-sitter-fsharp",
+    "tree-sitter-func",
+    "tree-sitter-gdscript",
+    "tree-sitter-gitattributes",
+    "tree-sitter-gitcommit",
+    "tree-sitter-gitignore",
+    "tree-sitter-gleam",
+    "tree-sitter-glsl",
+    "tree-sitter-gn",
+    "tree-sitter-go",
+    "tree-sitter-go-mod",
+    "tree-sitter-go-sum",
+    "tree-sitter-graphql",
+    "tree-sitter-groovy",
+    "tree-sitter-gstlaunch",
+    "tree-sitter-hack",
+    "tree-sitter-hare",
+    "tree-sitter-haskell",
+    "tree-sitter-haxe",
+    "tree-sitter-hcl",
+    "tree-sitter-heex",
+    "tree-sitter-hlsl",
+    "tree-sitter-html",
+    "tree-sitter-hyprlang",
+    "tree-sitter-ispc",
+    "tree-sitter-ini",
+    "tree-sitter-janet",
+    "tree-sitter-java",
+    "tree-sitter-javascript",
+    "tree-sitter-jsdoc",
+    "tree-sitter-json",
+    "tree-sitter-jsonnet",
+    "tree-sitter-julia",
+    "tree-sitter-kconfig",
+    "tree-sitter-kdl",
+    "tree-sitter-kotlin",
+    "tree-sitter-latex",
+    "tree-sitter-linkerscript",
+    "tree-sitter-llvm",
+    "tree-sitter-lua",
+    "tree-sitter-luadoc",
+    "tree-sitter-luap",
+    "tree-sitter-luau",
+    "tree-sitter-magik",
+    "tree-sitter-make",
+    "tree-sitter-markdown",
+    "tree-sitter-matlab",
+    "tree-sitter-mermaid",
+    "tree-sitter-meson",
+    "tree-sitter-netlinx",
+    "tree-sitter-nim",
+    "tree-sitter-ninja",
+    "tree-sitter-nix",
+    "tree-sitter-nqc",
+    "tree-sitter-objc",
+    "tree-sitter-ocaml",
+    "tree-sitter-odin",
+    "tree-sitter-org",
+    "tree-sitter-pascal",
+    "tree-sitter-pem",
+    "tree-sitter-perl",
+    "tree-sitter-pgn",
+    "tree-sitter-php",
+    "tree-sitter-po",
+    "tree-sitter-pony",
+    "tree-sitter-powershell",
+    "tree-sitter-printf",
+    "tree-sitter-prisma",
+    "tree-sitter-properties",
+    "tree-sitter-proto",
+    "tree-sitter-puppet",
+    "tree-sitter-purescript",
+    "tree-sitter-pymanifest",
+    "tree-sitter-python",
+    "tree-sitter-qmldir",
+    "tree-sitter-qmljs",
+    "tree-sitter-query",
+    "tree-sitter-r",
+    "tree-sitter-racket",
+    "tree-sitter-rbs",
+    "tree-sitter-re2c",
+    "tree-sitter-readline",
+    "tree-sitter-rego",
+    "tree-sitter-requirements",
+    "tree-sitter-ron",
+    "tree-sitter-rst",
+    "tree-sitter-ruby",
+    "tree-sitter-rust",
+    "tree-sitter-scala",
+    "tree-sitter-scheme",
+    "tree-sitter-scss",
+    "tree-sitter-slang",
+    "tree-sitter-smali",
+    "tree-sitter-smithy",
+    "tree-sitter-solidity",
+    "tree-sitter-sparql",
+    "tree-sitter-sql",
+    "tree-sitter-squirrel",
+    "tree-sitter-starlark",
+    "tree-sitter-svelte",
+    "tree-sitter-swift",
+    "tree-sitter-tablegen",
+    "tree-sitter-tcl",
+    "tree-sitter-test",
+    "tree-sitter-thrift",
+    "tree-sitter-toml",
+    "tree-sitter-typescript",
+    "tree-sitter-twig",
+    "tree-sitter-typst",
+    "tree-sitter-udev",
+    "tree-sitter-ungrammar",
+    "tree-sitter-uxntal",
+    "tree-sitter-v",
+    "tree-sitter-verilog",
+    "tree-sitter-vhdl",
+    "tree-sitter-vim",
+    "tree-sitter-vue",
+    "tree-sitter-wasm",
+    "tree-sitter-wgsl",
+    "tree-sitter-xcompose",
+    "tree-sitter-xml",
+    "tree-sitter-yaml",
+    "tree-sitter-yuck",
+    "tree-sitter-zig",
 ]
-# Where cloned grammars will live.
-vendor_dir = "vendor"
-# Where the compiled Tree-sitter library will be placed.
-lib_path = "build/my-languages.so"
 
-# Required language/extension mappings
-extension_language_map = {
-  ".py" = "python",
-  ".pyi" = "python",
-  ".js" = "javascript",
-  ".jsx" = "javascript",
-  ".ts" = "typescript",
-  ".tsx" = "tsx",
-  ".java" = "java",
-  ".kt" = "kotlin",
-  ".kts" = "kotlin",
-  ".go" = "go",
-  ".rs" = "rust",
-  ".c" = "c",
-  ".h" = "c",
-  ".cpp" = "cpp",
-  ".cc" = "cpp",
-  ".cxx" = "cpp",
-  ".hpp" = "cpp",
-  ".cs" = "c_sharp",
-  ".php" = "php",
-  ".rb" = "ruby",
-  ".swift" = "swift",
-  ".scala" = "scala",
-}
+[tree_sitter.extension_language_map]
+".agda" = "agda"
+".bash" = "bash"
+".bash_profile" = "bash"
+".bashrc" = "bash"
+".c" = "c"
+".cc" = "cpp"
+".cjs" = "javascript"
+".cpp" = "cpp"
+".cs" = "csharp"
+".css" = "css"
+".cxx" = "cpp"
+".d" = "d"
+".dart" = "dart"
+".ebuild" = "bash"
+".eclass" = "bash"
+".elm" = "elm"
+".erl" = "erlang"
+".ex" = "elixir"
+".exs" = "elixir"
+".f" = "fortran"
+".f03" = "fortran"
+".f08" = "fortran"
+".f77" = "fortran"
+".f90" = "fortran"
+".f95" = "fortran"
+".for" = "fortran"
+".frag" = "glsl"
+".fs" = "fsharp"
+".fsi" = "fsharp"
+".fsx" = "fsharp"
+".gd" = "gdscript"
+".gleam" = "gleam"
+".glsl" = "glsl"
+".go" = "go"
+".h" = "cpp"
+".hlsl" = "hlsl"
+".hpp" = "cpp"
+".hrl" = "erlang"
+".hs" = "haskell"
+".hs-boot" = "haskell"
+".html" = "html"
+".hxx" = "cpp"
+".java" = "java"
+".jl" = "julia"
+".js" = "javascript"
+".jsdoc" = "jsdoc"
+".json" = "json"
+".jsx" = "javascript"
+".kt" = "kotlin"
+".kts" = "kotlin"
+".lua" = "lua"
+".m" = "objc"
+".mjs" = "javascript"
+".ml" = "ocaml"
+".mli" = "ocaml_interface"
+".mm" = "objc"
+".nim" = "nim"
+".nix" = "nix"
+".odin" = "odin"
+".pas" = "pascal"
+".php" = "php"
+".pl" = "perl"
+".pm" = "perl"
+".pp" = "pascal"
+".ps1" = "powershell"
+".py" = "python"
+".r" = "r"
+".rb" = "ruby"
+".rs" = "rust"
+".sbt" = "scala"
+".scala" = "scala"
+".sh" = "bash"
+".sol" = "solidity"
+".sv" = "verilog"
+".svh" = "verilog"
+".swift" = "swift"
+".toml" = "toml"
+".ts" = "typescript"
+".tsx" = "tsx"
+".v" = "verilog"
+".vert" = "glsl"
+".vim" = "vim"
+".wgsl" = "wgsl"
+".zig" = "zig"
 
-language_repo_map = {
-  python = "vendor/tree-sitter-python",
-  javascript = "vendor/tree-sitter-javascript",
-  typescript = "vendor/tree-sitter-typescript/typescript",
-  tsx = "vendor/tree-sitter-typescript/tsx",
-  java = "vendor/tree-sitter-java",
-  kotlin = "vendor/tree-sitter-kotlin",
-  go = "vendor/tree-sitter-go",
-  rust = "vendor/tree-sitter-rust",
-  c = "vendor/tree-sitter-c",
-  cpp = "vendor/tree-sitter-cpp",
-  c_sharp = "vendor/tree-sitter-c-sharp",
-  php = "vendor/tree-sitter-php",
-  ruby = "vendor/tree-sitter-ruby",
-  swift = "vendor/tree-sitter-swift",
-  scala = "vendor/tree-sitter-scala",
-}
-
-lang_func_node_types = {
-  python = ["function_definition"],
-  javascript = ["function_declaration", "method_definition"],
-  typescript = ["function_declaration", "method_definition"],
-  tsx = ["function_declaration", "method_definition"],
-  java = ["method_declaration", "constructor_declaration"],
-  kotlin = ["function_declaration"],
-  go = ["function_declaration", "method_declaration"],
-  rust = ["function_item"],
-  c = ["function_definition"],
-  cpp = ["function_definition"],
-  c_sharp = ["method_declaration"],
-  php = ["function_declaration", "method_declaration"],
-  ruby = ["method", "singleton_method"],
-  swift = ["function_declaration"],
-  scala = ["function_definition"],
-}
-
-[tokens]
-# Optional defaults for token counting (used by `repo-metadata tokens`).
-# tokenizer_id = "deepseek-ai/deepseek-coder-6.7b-base"
-# Disable/enable HF tokenizers parallelism to avoid fork warnings.
-# parallelism = false
-# Override tokenizer.model_max_length to suppress long-sequence warnings during token counting.
-# max_length = 1000000
+[tree_sitter.lang_func_node_types]
+agda = []
+bash = ["function_definition"]
+c = ["function_definition"]
+cpp = ["function_definition"]
+csharp = ["method_declaration", "constructor_declaration", "local_function_statement"]
+css = []
+d = ["function_declaration"]
+dart = ["function_body"]
+elixir = []
+elm = ["value_declaration"]
+erlang = ["function_clause"]
+fortran = ["subroutine", "function"]
+fsharp = ["function_or_value_defn"]
+gdscript = ["function_definition"]
+gleam = ["function"]
+glsl = ["function_definition"]
+go = ["function_declaration", "method_declaration"]
+haskell = ["function"]
+hlsl = ["function_definition"]
+html = []
+java = ["method_declaration", "constructor_declaration"]
+javascript = ["function_declaration", "function_expression", "arrow_function", "method_definition"]
+jsdoc = []
+json = []
+julia = ["function_definition"]
+kotlin = ["function_declaration"]
+lua = ["function_declaration", "function_definition"]
+nim = ["proc_declaration", "func_declaration", "method_declaration", "iterator_declaration"]
+nix = ["function_expression"]
+objc = ["function_definition", "implementation_definition"]
+ocaml = ["value_definition"]
+ocaml_interface = ["value_definition"]
+odin = ["procedure_declaration"]
+pascal = ["defProc"]
+perl = ["subroutine_declaration_statement"]
+php = ["function_definition", "method_declaration"]
+powershell = ["function_statement"]
+python = ["function_definition"]
+r = ["function_definition"]
+ruby = ["method", "singleton_method"]
+rust = ["function_item"]
+scala = ["function_definition"]
+solidity = ["function_definition"]
+swift = ["function_declaration"]
+toml = []
+tsx = ["function_declaration", "function_expression", "arrow_function", "method_definition"]
+typescript = ["function_declaration", "function_expression", "arrow_function", "method_definition"]
+verilog = []
+vim = ["function_definition"]
+wgsl = ["function_declaration"]
+zig = ["FnProto"]

@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping, MutableMapping, Optional, Set
 
 # Default to language extensions only; further filtered by grammar list when present.
 DEFAULT_CONFIG_FILE = Path("repo_metadata.toml")
-
-# Tokenizer to use for token counting; can be overridden via CLI or env.
-DEFAULT_TOKENIZER_ID = os.environ.get("TOKENIZER_ID")
 
 
 @dataclass
