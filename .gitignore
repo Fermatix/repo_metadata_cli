@@ -31,3 +31,4 @@ htmlcov/
 
 # CLI outputs
 *.csv
+tmp/

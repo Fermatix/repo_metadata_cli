@@ -1,0 +1,63 @@
+"""Columns W, X, Y, Z, AA — holdout, docstring ratio, README, issue tracker, avg func length."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from ..base_metric import BaseMetric, RepoContext
+from ..metric_utils import (
+    compute_avg_func_length,
+    compute_docstring_ratio,
+    detect_issue_tracker,
+    detect_readme_quality,
+)
+
+
+class HoldoutMetric(BaseMetric):
+    """W: Holdout verification status (vendor attestation)."""
+
+    column = "W"
+    field_name = "holdout"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return "Likely Private"
+
+
+class DocstringRatioMetric(BaseMetric):
+    """X: Fraction of functions/methods/classes with docstrings (tree-sitter)."""
+
+    column = "X"
+    field_name = "docstring_ratio"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return compute_docstring_ratio(ctx.repo_path, ctx.allowed_files, ctx.tree_sitter)
+
+
+class ReadmeQualityMetric(BaseMetric):
+    """Y: README quality tier: None / Basic / Detailed / Comprehensive."""
+
+    column = "Y"
+    field_name = "readme_quality"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return detect_readme_quality(ctx.repo_path)
+
+
+class IssueTrackerMetric(BaseMetric):
+    """Z: Issue tracker integration level from commit message analysis."""
+
+    column = "Z"
+    field_name = "issue_tracker"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return detect_issue_tracker(ctx.repo_path)
+
+
+class AvgFuncLengthMetric(BaseMetric):
+    """AA: Average function length in lines (tree-sitter)."""
+
+    column = "AA"
+    field_name = "avg_func_length"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return round(compute_avg_func_length(ctx.repo_path, ctx.allowed_files, ctx.tree_sitter), 2)

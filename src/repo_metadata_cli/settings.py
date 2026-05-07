@@ -22,31 +22,21 @@ logger = logging.getLogger(__name__)
 class FilesSettings:
     allowed_extensions: Optional[Set[str]] = None
     allowed_filenames: Optional[Set[str]] = None
-    include_languages: Optional[List[str]] = None
 
 
 @dataclass
 class TreeSitterSettings:
-    grammar_repos: Optional[List[str]] = None
     language_packages: List[str] = field(default_factory=list)
     extension_language_map: Dict[str, str] = field(default_factory=dict)
     lang_func_node_types: Dict[str, Set[str]] = field(default_factory=dict)
-    language_repo_map: Dict[str, str] = field(default_factory=dict)
-    vendor_dir: Path = Path("vendor")
-
-
-@dataclass
-class TokensSettings:
-    tokenizer_id: Optional[str] = None
-    parallelism: Optional[bool] = None
-    max_length: Optional[int] = None
 
 
 @dataclass
 class AppSettings:
     files: FilesSettings = field(default_factory=FilesSettings)
     tree_sitter: TreeSitterSettings = field(default_factory=TreeSitterSettings)
-    tokens: TokensSettings = field(default_factory=TokensSettings)
+    # Optional pre-computed PR cache: {bundle_stem -> {total_pr, reviewed_pr, url}}
+    pr_cache: Dict[str, dict] = field(default_factory=dict)
 
 
 def _parse_list(raw) -> Optional[List[str]]:
@@ -87,14 +77,10 @@ def _parse_str_set_dict(raw) -> Optional[Dict[str, Set[str]]]:
 
 
 def load_app_settings(config_file: Optional[Path]) -> AppSettings:
-    """
-    Load application settings from a TOML file. Missing file yields defaults.
-    Paths are resolved relative to the config file location (or CWD).
-    """
+    """Load application settings from a TOML file. Missing file yields defaults."""
     cfg_path = resolve_config_path(config_file)
     files_settings = FilesSettings()
     tree_sitter_settings = TreeSitterSettings()
-    tokens_settings = TokensSettings()
 
     if cfg_path.exists():
         try:
@@ -105,9 +91,9 @@ def load_app_settings(config_file: Optional[Path]) -> AppSettings:
             data = {}
     else:
         data = {}
+
     files_data = data.get("files", {}) if isinstance(data, dict) else {}
     ts_data = data.get("tree_sitter", {}) if isinstance(data, dict) else {}
-    tokens_data = data.get("tokens", {}) if isinstance(data, dict) else {}
 
     # Files
     allowed_ext = files_data.get("allowed_extensions")
@@ -122,32 +108,15 @@ def load_app_settings(config_file: Optional[Path]) -> AppSettings:
     if isinstance(allowed_names, list):
         files_settings.allowed_filenames = {str(name).strip() for name in allowed_names if str(name).strip()}
     else:
-        # Fallback to common build filenames when not specified.
         files_settings.allowed_filenames = {"Makefile", "Dockerfile", "docker-compose.yml", "CMakeLists.txt"}
 
-    include_langs = files_data.get("include_languages")
-    if isinstance(include_langs, list):
-        files_settings.include_languages = [
-            str(lang).strip() for lang in include_langs if str(lang).strip()
-        ]
-
     # Tree-sitter
-    grammar_repos = _parse_list(ts_data.get("grammar_repos"))
-    if grammar_repos:
-        tree_sitter_settings.grammar_repos = grammar_repos
-
-    vendor_dir = ts_data.get("vendor_dir")
-    if vendor_dir:
-        p = Path(str(vendor_dir))
-        tree_sitter_settings.vendor_dir = p if p.is_absolute() else (cfg_path.parent / p)
-
     language_packages = _parse_list(ts_data.get("language_packages"))
     if language_packages:
         tree_sitter_settings.language_packages = language_packages
 
     ext_map = _parse_str_dict(ts_data.get("extension_language_map"))
     if ext_map:
-        # Normalize extensions to start with dot
         tree_sitter_settings.extension_language_map = {
             (k.lower() if k.startswith(".") else f".{k.lower()}"): v
             for k, v in ext_map.items()
@@ -165,27 +134,9 @@ def load_app_settings(config_file: Optional[Path]) -> AppSettings:
             f"lang_func_node_types must be specified in [tree_sitter] section of TOML ({cfg_path})."
         )
 
-    language_repo_map = _parse_str_dict(ts_data.get("language_repo_map"))
-    if language_repo_map:
-        tree_sitter_settings.language_repo_map = language_repo_map
-
-    # Tokens
-    tok_id = tokens_data.get("tokenizer_id")
-    if isinstance(tok_id, str) and tok_id.strip():
-        tokens_settings.tokenizer_id = tok_id.strip()
-
-    tok_parallel = tokens_data.get("parallelism")
-    if isinstance(tok_parallel, bool):
-        tokens_settings.parallelism = tok_parallel
-
-    tok_max_len = tokens_data.get("max_length")
-    if isinstance(tok_max_len, int) and tok_max_len > 0:
-        tokens_settings.max_length = tok_max_len
-
     return AppSettings(
         files=files_settings,
         tree_sitter=tree_sitter_settings,
-        tokens=tokens_settings,
     )
 
 
@@ -214,21 +165,17 @@ def update_extensions_config(
     config_file: Optional[Path],
     allowed_extensions: List[str],
     extension_language_map: Dict[str, str],
-    language_repo_map: Dict[str, str],
 ) -> None:
-    """
-    Persist allowed_extensions and extension/language mappings into the TOML config, preserving other fields.
-    """
+    """Persist allowed_extensions and extension_language_map into the TOML config."""
     cfg_path = resolve_config_path(config_file)
     data = load_config_data(cfg_path)
 
     if "files" not in data or not isinstance(data.get("files"), dict):
         data["files"] = {}
-
     data["files"]["allowed_extensions"] = allowed_extensions
+
     if "tree_sitter" not in data or not isinstance(data.get("tree_sitter"), dict):
         data["tree_sitter"] = {}
-
     data["tree_sitter"]["extension_language_map"] = extension_language_map
-    data["tree_sitter"]["language_repo_map"] = language_repo_map
+
     save_config_data(cfg_path, data)

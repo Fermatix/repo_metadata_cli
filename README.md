@@ -1,202 +1,340 @@
 # repo-metadata-cli
 
-A command-line utility for extracting repository metadata from Git bundle files. It is designed for dataset curation and code quality assessment: it identifies licenses, characterizes the technology stack, quantifies history and language distribution, measures documentation and duplication, estimates average function length via Tree-sitter, and optionally performs tokenization for the branch that contains the most recent commit (diff and snapshot).
+Утилита командной строки для извлечения метаданных из Git-репозиториев, упакованных в `.bundle` файлы. Вычисляет 27 метрик (колонки A–AA стандартной таблицы Quote Form) и записывает результат в CSV.
 
-The `metadata` command accepts two input types:
-- **Bundle directory** — point it at a directory of pre-existing `*.bundle` files.
-- **Repository list** — provide a `.txt` file with one repository URL per line; the tool mirrors each repository, creates bundle files, and immediately computes metadata.
+---
 
-## Capabilities
-- Fetches remote repositories and creates `*.bundle` files from a plain-text URL list (supports public and private repos via token) — or works with a pre-built bundle directory.
-- Processes full datasets of `*.bundle` files in a single pass.
-- History metrics: creation date, counts of commits and branches, sizes of `.git` and the working tree.
-- Code quality: `cloc` counts (files, code/comment lines, optionally filtered languages), language and extension distributions, duplication ratio, average function length via Tree-sitter, README volume.
-  - `raw_loc`: total code + comment lines across all languages (unfiltered cloc); `loc` respects `include_languages`/`--include-lang` when provided.
-- License discovery: fast detection via LICENSE/COPYING files.
-- Tokenization: tokens for the latest commit and snapshot of the branch with the most recent commit (HuggingFace tokenizer).
-- Configuration is entirely TOML-based; no hard-coded language lists.
+## Требования
 
-## Requirements
-- Python 3.10+
-- [uv](https://github.com/astral-sh/uv) as the environment and dependency manager
-- Utilities: `git`, `cloc`, `bash` (required only for `from-repos`)
-- Optional: internet access to download tokenizers and grammars
+| Инструмент | Назначение | Установка |
+|---|---|---|
+| Python 3.10+ | runtime | — |
+| [uv](https://github.com/astral-sh/uv) | менеджер зависимостей | `brew install uv` |
+| `git` | клонирование бандлов, git-метрики | системный |
+| `scc` | подсчёт строк кода (колонки F, G, H, K, L, M) | `brew install scc` |
+| `jscpd` | обнаружение дублирования кода (колонка I) | `npm install -g jscpd` |
 
-## Installation via uv
+`scc` и `jscpd` необязательны: без `scc` работает встроенный Python-счётчик (менее точный), без `jscpd` колонка I = `0`. Установка `scc` рекомендуется.
+
+---
+
+## Установка
+
 ```bash
-uv venv                       # create .venv
-source .venv/bin/activate     # activate the environment
-uv sync                       # install dependencies from pyproject.toml and generate uv.lock
-uv run repo-metadata --help   # verify the CLI
+# 1. Python-зависимости
+uv venv
+source .venv/bin/activate
+uv sync
+
+# 2. Tree-sitter грамматики (нужны для колонок X и AA)
+repo-metadata fetch-grammars
+
+# 3. Внешние инструменты (рекомендуется)
+brew install scc
+npm install -g jscpd
 ```
 
-The commands below assume an active virtual environment or the `uv run` prefix.
+---
 
-## Configuration (`repo_metadata.toml`)
-All settings reside in a TOML file (default: `repo_metadata.toml` in the working directory). A reference is provided in `repo_metadata.toml.example`.
+## Быстрый старт
 
-- `[files]`
-  - `allowed_extensions`: list of extensions treated as code. If omitted, `tree_sitter.extension_language_map` keys are used.
-  - `allowed_filenames`: extensionless filenames that are always included (e.g., Makefile, Dockerfile).
-  - `include_languages`: optional list of language names to pass to cloc (`--include-lang`). When set, LOC and language distribution are computed only for these languages (overridable via `--include-lang` CLI flag).
-- `[tree_sitter]`
-  - `language_packages`: Python packages with grammars installable via `fetch-grammars`.
-  - `extension_language_map`: mapping from file extension to language (keys normalized to lowercase with a dot).
-  - `lang_func_node_types`: node types considered functions when computing average length.
-  - `vendor_dir` / `language_repo_map`: optional local grammar paths when building from source.
-- `[tokens]` (optional)
-  - `tokenizer_id`: default Hugging Face tokenizer id for `repo-metadata tokens` (fallback: `$TOKENIZER_ID` env var).
-  - `parallelism`: boolean to set `TOKENIZERS_PARALLELISM` (defaults to `false` if unspecified).
-  - `max_length`: integer to override `tokenizer.model_max_length` and suppress long-sequence warnings during counting.
+### Полный запуск одной командой
 
-## Core commands
-All commands accept `--config-file` (path to TOML) and `--log-level` for logging control.
-
-### Metadata (no tokens)
-
-**From a bundle directory:**
 ```bash
-uv run repo-metadata metadata /path/to/dataset \
+repo-metadata metadata repos.txt \
+  --pr-cache pr_cache.json \
   --output-csv repo_metadata.csv \
-  --config-file repo_metadata.toml
+  --gitlab-token $GITLAB_TOKEN
 ```
 
-**From a repository list (fetch + analyze in one step):**
+Эта команда делает всё последовательно:
+1. Загружает бандлы из `repos.txt` → `./tmp/bundles/`
+2. Обогащает PR-счётчики (запрашивает GitLab/GitHub API, кэширует в `pr_cache.json`)
+3. Запускает метрический пайплайн по всем бандлам
+4. Записывает результат в `repo_metadata.csv`
+
+При повторном запуске уже обработанные репозитории пропускаются — прогресс инкрементальный.
+
+### Если бандлы уже загружены
+
 ```bash
-uv run repo-metadata metadata repos.txt \
+repo-metadata metadata ./tmp/bundles/ \
+  --pr-cache pr_cache.json \
+  --output-csv repo_metadata.csv
+```
+
+### Без PR-метрик (быстрее)
+
+```bash
+repo-metadata metadata repos.txt \
   --output-csv repo_metadata.csv \
-  --config-file repo_metadata.toml
+  --gitlab-token $GITLAB_TOKEN
 ```
 
-- When `dataset_path` is a directory, scans all `*.bundle` files inside it.
-- When `dataset_path` is a `.txt` file, mirrors each repository URL, creates bundle files, and then runs the analysis. Lines beginning with `#` and blank lines are ignored.
-- Working tree metrics (cloc, duplication, avg_func_length, README, language distribution) are computed on the branch that contains the most recent commit.
-- Use `--include-lang=Python,TypeScript` to restrict cloc/LOC to those languages (overrides `[files].include_languages`).
-- The `--skip-tree-sitter` flag disables average function length computation.
+Колонки P (`total_pr_count`) и Q (`reviewed_pr_count`) будут рассчитаны из git-истории — менее точно, чем через API, но работает без токенов.
 
-**Options for `.txt` mode:**
-| Option | Default | Description |
-| --- | --- | --- |
-| `--bundles-dir` | `./tmp/bundles` | Where to write fetched `*.bundle` files. |
-| `--mirrors-dir` | `./tmp/mirrors` | Where to keep bare-mirror clones. |
-| `--ok-file` | `./tmp/fetched_repos.txt` | File that records successfully fetched URLs. |
-| `--gitlab-token` / `$GITLAB_TOKEN` | — | Personal access token for private repositories. |
+---
 
-**Example `repos.txt`:**
+## Формат `repos.txt`
+
+Один URL репозитория в строке. Строки, начинающиеся с `#`, игнорируются.
+
 ```
-# public repos
+# публичные репозитории
 https://github.com/org/repo-a.git
 https://github.com/org/repo-b.git
 
-# private repo (requires GITLAB_TOKEN)
+# приватный GitLab-репозиторий
 https://gitlab.com/company/private-repo.git
 ```
 
-**Private repositories:**
-```bash
-# via flag
-uv run repo-metadata metadata repos.txt --gitlab-token glpat-xxxxxxxxxxxx
+---
 
-# via environment variable
-GITLAB_TOKEN=glpat-xxxxxxxxxxxx uv run repo-metadata metadata repos.txt
+## Переменные окружения
+
+| Переменная | Назначение |
+|---|---|
+| `GITLAB_TOKEN` | Токен GitLab для приватных репозиториев и PR-данных |
+| `GITHUB_TOKEN` | Токен GitHub (repo read scope) для PR-данных |
+| `OPENROUTER_API_KEY` | Ключ OpenRouter для генерации описания (колонка D) |
+
+Токены можно также передавать через флаги `--gitlab-token` и `--github-token`.
+
+---
+
+## Структура директорий
+
+Утилита определяет **Vendor Name (колонка B)** из имени родительской папки бандла:
+
+```
+bundles/
+├── acme_corp/
+│   ├── frontend-app.bundle   → vendor_name = "acme_corp"
+│   └── backend-api.bundle    → vendor_name = "acme_corp"
+└── other_vendor/
+    └── mobile-sdk.bundle     → vendor_name = "other_vendor"
 ```
 
-### Tokens
-```bash
-uv run repo-metadata tokens /path/to/dataset \
-  --output-csv repo_tokens.csv \
-  --config-file repo_metadata.toml \
-  --tokenizer-id deepseek-ai/deepseek-coder-6.7b-base
-```
-- If `--tokenizer-id` is omitted and `TOKENIZER_ID` is not set, token counts are skipped.
-- Added-line tokens are collected only for the most recent commit (tip of the freshest branch), and snapshot tokens use that branch's working tree.
-- The tokenizer is resolved via `transformers`; without the package or internet access, tokenization is skipped.
-- Parallelism in `tokenizers` is disabled by default (`TOKENIZERS_PARALLELISM=false`) to suppress fork warnings; override the env var or `[tokens].parallelism` in the TOML.
-- To silence "sequence length longer than the specified maximum" warnings during token counting, set `[tokens].max_length` to a higher value; counting does not truncate content.
+---
 
-### Merging tables
+## Команды
+
+### `metadata` — основная команда
+
 ```bash
-uv run repo-metadata merge repo_metadata.csv repo_tokens.csv \
-  --output-csv repo_metadata_with_tokens.csv
+repo-metadata metadata DATASET_PATH [OPTIONS]
 ```
 
-## Output fields
+`DATASET_PATH` — директория с `*.bundle` файлами или `.txt` файл со списком URL.
 
-| field_name | type | description | examples_or_rules |
-| --- | --- | --- | --- |
-| repo_id | string (UUID) | Primary key; randomly generated per repository during metadata extraction. | c2f9d1e8-9a41-4f72-9a8b-1f0f4f12e6a3 |
-| repo_name | string | Repository name (bundle stem); used as the key for `merge`. | openai/gym |
-| languages | stringified JSON | Language distribution by share of LoC; JSON of the form `{lang: share}`. | {"Python":0.72,"C++":0.18} |
-| extensions | stringified JSON | Extension distribution by share of LoC (after `include_languages`/`--include-lang` filters); JSON of the form `{ext: share}`. | {".py":0.82,".ts":0.18} |
-| stack | string | Human-readable top 3 languages with percentages. | Python (72%), C++ (18%), C (6%) |
-| license_type | enum | Detected root license: MIT, APACHE-2.0, GPL, GPL-3.0, BSD, MPL-2.0, UNLICENSE, UNKNOWN. | MIT |
-| created_at | timestamp (git) | Timestamp of the first commit (`git log --reverse --max-count=1`). | 2020-03-18 14:22:11 +0000 |
-| commit_count | integer | Number of commits on the branch with the most recent commit (`git rev-list --count <latest-branch>`). | 1582 |
-| branch_count | integer | Count of local and remote branches (`git branch -a`). | 41 |
-| contributors_count | integer | Unique authors in history (`git shortlog -sne --all`). | 27 |
-| repo_git_history_mb | float | Size of `.git` directory in MB via `du -sk`. | 134.8 |
-| repo_bundle_mb | float | Size of the bundle file in MB. | 512.3 |
-| repo_worktree_mb | float | Size of the working tree excluding `.git` (MB). | 92.5 |
-| files | integer | File count from cloc (`SUM.nFiles`). | 1287 |
-| loc | integer | Code plus comment lines from cloc (non-empty), filtered by `include_languages`/`--include-lang` if provided. | 442915 |
-| raw_loc | integer | Code plus comment lines from cloc without language filters. | 512000 |
-| avg_func_length | float | Average function length via Tree-sitter; 0 if grammars are unavailable. | 12.4 |
-| docstring_ratio | float | Ratio of comment lines to code lines (`comment/code`). | 0.18 |
-| duplication_ratio | float | Duplication estimate: `1 - unique_lines/total_lines` (0-1). | 0.27 |
-| documentation_cnt | integer | Line count across all `README*` files in the repository root. | 245 |
-| deepseek_token_count_all_commits | integer | Tokens for added lines in the latest commit of the freshest branch; 0 if the tokenizer is not configured. | 12487221 |
-| deepseek_token_count_last_commit | integer | Tokens for the current snapshot of allowed files; 0 without a tokenizer. | 487552 |
+| Опция | По умолчанию | Описание |
+|---|---|---|
+| `--output-csv` | `repo_metadata.csv` | Путь к выходному CSV |
+| `--config-file` | `repo_metadata.toml` | Путь к TOML-конфигурации |
+| `--pr-cache` | — | Путь к JSON-кэшу PR-данных. Если передан токен, кэш обновляется автоматически перед пайплайном |
+| `--gitlab-token` / `$GITLAB_TOKEN` | — | GitLab-токен для загрузки репозиториев и PR-данных |
+| `--github-token` / `$GITHUB_TOKEN` | — | GitHub-токен для PR-данных |
+| `--skip-tree-sitter` | `false` | Пропустить Tree-sitter метрики (колонки X, AA) |
+| `--bundles-dir` | `./tmp/bundles` | Куда сохранять бандлы (только для `.txt`) |
+| `--mirrors-dir` | `./tmp/mirrors` | Куда сохранять bare-клоны (только для `.txt`) |
 
-### Installing Tree-sitter grammars
+### `enrich-prs` — обогащение PR-данных отдельным шагом
+
+Используется, если нужно собрать PR-данные отдельно от пайплайна, например заранее для большого датасета.
+
 ```bash
-uv run repo-metadata fetch-grammars --config-file repo_metadata.toml
+repo-metadata enrich-prs repos.txt \
+  --bundles-dir ./tmp/bundles \
+  --cache-file pr_cache.json \
+  --gitlab-token $GITLAB_TOKEN
 ```
-Installs packages listed in `tree_sitter.language_packages` via `uv pip install`.
 
-### Refreshing the extension allowlist
+| Опция | По умолчанию | Описание |
+|---|---|---|
+| `--cache-file` | `pr_cache.json` | Выходной JSON-кэш |
+| `--bundles-dir` | — | Директория с бандлами. **Обязательна для GitLab-зеркал** — без неё API-запросы уйдут на зеркальный URL и вернут 0 MR |
+| `--gitlab-token` / `$GITLAB_TOKEN` | — | GitLab-токен |
+| `--github-token` / `$GITHUB_TOKEN` | — | GitHub-токен |
+| `--gitlab-base-url` | `https://gitlab.com/api/v4` | URL для self-hosted GitLab |
+
+**Зачем нужен `--bundles-dir` для GitLab?**
+
+Если `repos.txt` содержит URL зеркального репозитория (не оригинального проекта), GitLab API вернёт 0 MR — они хранятся в оригинальном проекте, не в зеркале. При указании `--bundles-dir` утилита автоматически сканирует каждый бандл, извлекает оригинальный путь проекта из тел merge-коммитов (`See merge request ORG/REPO!NNN`) и запрашивает API по правильному адресу.
+
+Команда безопасна для повторного запуска: уже заполненные записи пропускаются, записи с `total_pr=0` переспрашиваются.
+
+**Производительность:**
+- GitHub: пакетный GraphQL (20 репозиториев за запрос) → 10 000 репозиториев ≈ 6 минут
+- GitLab: REST пагинация, данные о ревью берутся из полей MR-списка без дополнительных запросов
+
+### `fetch-grammars` — установка Tree-sitter грамматик
+
 ```bash
-uv run repo-metadata refresh-allowed --config-file repo_metadata.toml
+repo-metadata fetch-grammars
 ```
-Populates `files.allowed_extensions` based on `tree_sitter.extension_language_map`.
 
-## Logging
-- Default level is `INFO`; adjust via `--log-level` (`DEBUG` is useful for Tree-sitter or tokenizer diagnostics).
-- Logs are emitted to stdout with format `%(asctime)s | %(levelname)s | %(name)s | %(message)s`.
+Устанавливает пакеты из `tree_sitter.language_packages` в TOML через `uv pip install`.
 
-## Pipeline overview
+### `refresh-allowed` — обновление списка расширений
 
-### `metadata` (`.txt` mode: fetch + analyze)
-1. Read repository URLs from the input file (skip blank lines and `#` comments).
-2. For each URL: init or update a bare-mirror clone under `--mirrors-dir`, fetch all refs, create a `*.bundle` file under `--bundles-dir`.
-3. Run the standard metadata pipeline on the populated bundles directory.
+```bash
+repo-metadata refresh-allowed
+```
 
-### `metadata` (directory mode) / `tokens`
-- For each bundle:
-  - Clone into a temporary directory with `GIT_LFS_SKIP_SMUDGE=1`.
-  - Select the branch with the most recent commit and check it out.
-  - Collect history (`git log`, `git rev-list` on the selected branch, branch and author counts).
-  - Measure sizes: bundle, `.git`, working tree (on that branch).
-  - Detect the license from LICENSE/COPYING files.
-  - Count README lines in the repository root.
-  - Run `cloc --json` twice: once unfiltered for `raw_loc`, and once with `--by-file-by-lang` respecting include_languages/`--include-lang` for `loc`, language, and extension distributions.
-  - Compute average function length via Tree-sitter on allowed files only.
-  - Compute duplication as unique-line share.
-- For tokens:
-  - Latest commit: gather added lines from `git show --unified=0` on the freshest branch tip.
-  - Snapshot: read content of all allowed files on that branch.
-  - Count tokens in batches using the configured tokenizer.
-- Rows are appended to CSV incrementally; existing repositories are not recomputed.
+Заполняет `files.allowed_extensions` на основе ключей `tree_sitter.extension_language_map`.
 
-## Troubleshooting and tips
-- If no `*.bundle` files are found, the CLI emits a warning and exits gracefully.
-- If grammars are missing, use `--skip-tree-sitter` or install via `fetch-grammars`.
-- If `transformers` or the tokenizer is absent, token counts remain zero; run `uv add transformers` and set `--tokenizer-id`.
-- Pin `uv.lock` in version control for reproducibility.
-- Ensure `cloc` is on PATH; otherwise, line metrics will be empty.
-- If `metadata` with a `.txt` file fails on a repository, check whether `$GITLAB_TOKEN` / `--gitlab-token` is set for private repos and that the URL is accessible from the machine running the tool.
-- To re-run analysis on already-fetched bundles without re-cloning, pass the bundles directory directly instead of the `.txt` file.
+---
 
-## Development
-- Build check: `uv run python -m compileall src/repo_metadata_cli`.
-- Entry point: `repo-metadata` (declared in `pyproject.toml`).
-- Configure log verbosity with `--log-level` to surface diagnostics during development.
+## Описание через LLM (колонка D)
+
+Генерирует описание репозитория (1–3 предложения) через OpenRouter API. Не требует наличия README — описание строится по коду напрямую.
+
+```bash
+export OPENROUTER_API_KEY=sk-or-v1-xxxx
+repo-metadata metadata ./bundles/
+```
+
+Без ключа колонка D остаётся пустой, остальные метрики вычисляются в обычном режиме.
+
+| Параметр | Значение |
+|---|---|
+| Модель | `google/gemini-3-flash-preview` |
+| Стоимость | ~$0.0001 / репозиторий |
+
+---
+
+## Выходные колонки CSV
+
+| Колонка | Поле | Тип | Описание | Метод вычисления |
+|---|---|---|---|---|
+| A | `dataset_id` | UUID | Уникальный идентификатор | Генерируется автоматически |
+| B | `vendor_name` | string | Имя вендора | Имя родительской папки бандла |
+| C | `dataset_name` | string | Название репозитория | Имя файла бандла без `.bundle` |
+| D | `description` | string | Описание: область, тип приложения, стек | LLM (OpenRouter) |
+| E | `num_repos` | integer | Количество репозиториев | Всегда `1` |
+| F | `raw_loc` | integer | Все строки, включая пустые и комментарии | `scc` → колонка `Lines` |
+| G | `logical_loc` | integer | Только строки кода | `scc` → колонка `Code` |
+| H | `autogen_loc` | integer | Строки кода в авто-генерируемых файлах | `scc` по файлам с паттернами `*_pb2.py`, `*.min.js`, `vendor/`, `node_modules/` и т.д. |
+| I | `duplication_ratio` | float [0,1] | Доля дублированных блоков | `jscpd --min-tokens 50 --min-lines 5` |
+| J | `fork_pct` | float [0,1] | Доля форкнутых репозиториев | Проверка remote `upstream` в `.git/config` |
+| K | `source_files` | integer | Количество исходных файлов | `scc` → колонка `Files` |
+| L | `primary_language` | string | Основной язык по объёму кода | `scc` → язык с наибольшим `Code` |
+| M | `lang_distribution` | JSON | Распределение языков (≥1%) | `scc` → `{"Python": 0.72, "Go": 0.18, ...}` |
+| N | `commit_count` | integer | Не-merge, не-revert коммиты | `git log --all --no-merges` без revert-коммитов |
+| O | `contributors` | integer | Уникальные авторы (боты исключены) | `git shortlog --all -sn --no-merges` |
+| P | `total_pr_count` | integer | Всего merged PR/MR | PR-кэш (API) → fallback: `git log --all` по паттернам merge-коммитов |
+| Q | `reviewed_pr_count` | integer | PR с хотя бы одним ревью | PR-кэш (API); `0` без кэша |
+| R | `ci_checks` | Yes/No | Наличие CI-конфигурации | Поиск `.github/workflows/`, `.circleci/`, `.travis.yml`, `Jenkinsfile`, `.gitlab-ci.yml` |
+| S | `deployment_infra` | enum | Уровень деплой-инфраструктуры | Анализ CI/CD, Terraform, K8s, Helm |
+| T | `monitoring` | enum | Уровень мониторинга | Поиск Sentry/Datadog/Prometheus/OpenTelemetry в исходниках |
+| U | `test_suite` | enum | Наличие тестов | Поиск `test_*.py`, `*.spec.ts`, `*_test.go` и фреймворков |
+| V | `containerized` | Yes/No | Контейнеризация | Наличие `Dockerfile`, `docker-compose.yml`, K8s-манифестов |
+| W | `holdout` | enum | Статус приватности | Всегда `Likely Private` |
+| X | `docstring_ratio` | float [0,1] | Доля функций с докстрингами | Tree-sitter: `(функции с докстрингом) / (все функции)` |
+| Y | `readme_quality` | enum | Качество README | Наличие секций: установка, использование, архитектура |
+| Z | `issue_tracker` | enum | Интеграция с трекером задач | Паттерны `#123`, `JIRA-`, `LINEAR-` в коммитах |
+| AA | `avg_func_length` | float | Средняя длина функции (строк) | Tree-sitter: обход AST всех исходников |
+| AB | `quoted_price` | — | — | Пусто |
+| AC | `pricing_unit` | — | — | Пусто |
+| AD | `unit_rate` | — | — | Пусто |
+
+**Значения перечислений:**
+
+| Поле | Допустимые значения |
+|---|---|
+| `deployment_infra` | `None` / `Basic CI` / `Full CI-CD` / `Enterprise` |
+| `monitoring` | `None` / `Basic` / `APM+Alerting` / `Full SRE` |
+| `test_suite` | `None` / `Basic` / `Comprehensive` |
+| `readme_quality` | `None` / `Basic` / `Detailed` / `Comprehensive` |
+| `issue_tracker` | `None` / `Basic` / `Linked to Commits` / `Full+Design Docs` |
+| `holdout` | `Unverified` / `Likely Private` / `Verified Private` / `Verified+Eval-Ready` |
+
+---
+
+## Конфигурация (`repo_metadata.toml`)
+
+Пример: `repo_metadata.toml.example`.
+
+### `[files]`
+
+```toml
+[files]
+allowed_extensions = [".py", ".ts", ".go", ".rs", ".java"]
+allowed_filenames = ["Makefile", "Dockerfile", "docker-compose.yml"]
+```
+
+### `[tree_sitter]`
+
+```toml
+[tree_sitter]
+language_packages = ["tree-sitter-python", "tree-sitter-typescript"]
+
+[tree_sitter.extension_language_map]  # обязательно
+".py" = "python"
+".ts" = "typescript"
+
+[tree_sitter.lang_func_node_types]    # обязательно
+python = ["function_definition"]
+typescript = ["function_declaration", "method_definition"]
+```
+
+- `language_packages` — пакеты, устанавливаемые командой `fetch-grammars`.
+- `extension_language_map` — маппинг расширений на языки (**обязателен**).
+- `lang_func_node_types` — типы AST-узлов, считающихся функциями (**обязателен**).
+
+---
+
+## Устранение неполадок
+
+| Проблема | Решение |
+|---|---|
+| `raw_loc`, `logical_loc` = 0 | Установить `scc`: `brew install scc` |
+| `duplication_ratio` = 0 | Установить `jscpd`: `npm install -g jscpd` |
+| `docstring_ratio`, `avg_func_length` = 0 | Запустить `repo-metadata fetch-grammars`; или использовать `--skip-tree-sitter` |
+| `description` пустая | Задать `OPENROUTER_API_KEY` |
+| `total_pr_count`, `reviewed_pr_count` = 0 | Передать `--pr-cache pr_cache.json` и токен GitLab/GitHub |
+| PR-кэш содержит нули для GitLab-репозиториев | Запустить с `--bundles-dir` — утилита автоматически определит оригинальный путь проекта из git-истории зеркала |
+| Ошибка `extension_language_map must be specified` | Заполнить `[tree_sitter.extension_language_map]` в TOML |
+| Ошибка клонирования бандла | Проверить целостность: `git bundle verify file.bundle` |
+| Нет `*.bundle` файлов в директории | Проверить путь; для URL-режима убедиться, что `$GITLAB_TOKEN` задан |
+
+---
+
+## Архитектура
+
+```
+src/repo_metadata_cli/
+├── base_metric.py        # BaseMetric (ABC) + RepoContext (кэш вычислений)
+├── metric_utils.py       # Утилиты: get_scc_stats(), run_jscpd(), detect_*()
+├── pipeline.py           # Список METRICS, run_pipeline(), run_metadata_pipeline()
+├── pr_enricher.py        # Обогащение PR-данных через GitHub GraphQL / GitLab REST
+├── fetcher.py            # Загрузка бандлов из repos.txt
+├── metrics/
+│   ├── basic.py          # A, B, C, E
+│   ├── description.py    # D (LLM / OpenRouter)
+│   ├── loc.py            # F, G, H
+│   ├── quality.py        # I, J
+│   ├── files.py          # K, L, M
+│   ├── git.py            # N, O, P, Q
+│   ├── infra.py          # R, S, T, V
+│   ├── testing.py        # U
+│   └── docs.py           # W, X, Y, Z, AA
+├── cli.py                # Typer CLI
+├── settings.py           # Загрузка TOML
+├── allowed_files.py      # Фильтрация файлов по расширению
+└── tree_sitter_support.py
+```
+
+**Добавление новой метрики:**
+
+```python
+# В нужном файле metrics/
+class MyNewMetric(BaseMetric):
+    column = "AE"
+    field_name = "my_field"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return some_computation(ctx.repo_path)
+
+# В pipeline.py — добавить в список METRICS
+```
