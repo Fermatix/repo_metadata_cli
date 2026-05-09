@@ -256,13 +256,26 @@ def _python_loc_fallback(repo_dir: Path, extension_language_map: Dict[str, str])
     return {"languages": languages, "total": total_stats}
 
 
-def get_scc_stats(repo_dir: Path, extension_language_map: Optional[Dict[str, str]] = None) -> dict:
+# Directories excluded from Logical LOC (G) per spec — dependency/build artifacts.
+# Raw LOC (F) is NOT filtered; it uses scc with no exclusions.
+_SCC_DEP_DIRS = "node_modules,vendor,dist,build,bower_components"
+
+
+def get_scc_stats(
+    repo_dir: Path,
+    extension_language_map: Optional[Dict[str, str]] = None,
+    exclude_dep_dirs: bool = False,
+) -> Dict[str, Any]:
     """Run `scc --format json` and return parsed language statistics.
 
     Falls back to a Python-based line counter when scc is not installed.
     The fallback uses git ls-files and single-line comment heuristics.
     """
-    out = run_cmd(["scc", "--format", "json", "--no-complexity", str(repo_dir)])
+    cmd = ["scc", "--format", "json", "--no-complexity"]
+    if exclude_dep_dirs:
+        cmd += ["--exclude-dir", _SCC_DEP_DIRS]
+    cmd.append(str(repo_dir))
+    out = run_cmd(cmd)
     if out:
         return _parse_scc_output(out)
 
@@ -329,12 +342,34 @@ def _is_autogen_file(file_path: Path, repo_root: Path) -> bool:
     return False
 
 
-def get_auto_gen_loc(repo_dir: Path, extension_language_map: Optional[Dict[str, str]] = None) -> int:
-    """Count non-blank, non-comment lines in auto-generated files.
+def _scc_code_for_files(files: List[Path]) -> int:
+    """Run scc on a list of specific files and return total Code lines.
 
-    scc is not used here because it doesn't support many autogen file types
-    (lock files, .min.js, etc.) and returns empty output for them, causing
-    undercounting. The Python line counter handles all file types uniformly.
+    Files are passed in batches to avoid ARG_MAX limits.
+    Returns 0 if scc is not available.
+    """
+    if not files:
+        return 0
+    total = 0
+    batch_size = 400
+    for i in range(0, len(files), batch_size):
+        batch = files[i : i + batch_size]
+        out = run_cmd(
+            ["scc", "--format", "json", "--no-complexity"] + [str(p) for p in batch],
+            timeout=120,
+        )
+        if out:
+            stats: Dict[str, Any] = _parse_scc_output(out)
+            total += int(stats["total"]["code"])
+    return total
+
+
+def get_auto_gen_loc(repo_dir: Path, extension_language_map: Optional[Dict[str, str]] = None) -> int:
+    """Count scc Code lines in auto-generated files (spec column H).
+
+    Identifies auto-gen files by filename patterns, directory patterns, file
+    header markers, and lock files.  Uses scc (same Code column as logical_loc)
+    with a Python counter fallback when scc is unavailable.
     """
     auto_gen: List[Path] = []
     for path in repo_dir.rglob("*"):
@@ -345,6 +380,12 @@ def get_auto_gen_loc(repo_dir: Path, extension_language_map: Optional[Dict[str, 
     if not auto_gen:
         return 0
 
+    # Primary: scc (matches the Code column methodology used for logical_loc)
+    total_code = _scc_code_for_files(auto_gen)
+    if total_code > 0:
+        return total_code
+
+    # Fallback: Python counter (when scc is not installed)
     ext_map = extension_language_map or {}
     total_code = 0
     for path in auto_gen:
@@ -373,20 +414,28 @@ def run_jscpd(repo_dir: Path) -> float:
     with tempfile.TemporaryDirectory() as tmpdir:
         report_dir = Path(tmpdir)
         ignore_pattern = ",".join([
+            # Directory-based autogen
             "**/vendor/**", "**/node_modules/**", "**/dist/**", "**/build/**",
-            "**/*.min.js", "**/*.min.css", "**/__generated__/**", "**/migrations/**",
+            "**/__generated__/**", "**/migrations/**", "**/generated/**",
+            # Filename pattern autogen
+            "**/*_generated.*", "**/*_pb2.py", "**/*.pb.go",
+            "**/*.min.js", "**/*.min.css", "**/*.bundle.js",
+            # Lock files
+            "**/package-lock.json", "**/yarn.lock", "**/Cargo.lock",
+            "**/go.sum", "**/poetry.lock", "**/pnpm-lock.yaml",
         ])
         cmd = [
             "jscpd",
             "--min-tokens", "50",
             "--min-lines", "5",
+            "--max-size", "200",
             "--reporters", "json",
             "--output", str(report_dir),
             "--ignore", ignore_pattern,
             "--silent",
             str(repo_dir),
         ]
-        run_cmd(cmd)
+        run_cmd(cmd, timeout=720)
         report_file = report_dir / "jscpd-report.json"
         if not report_file.exists():
             logger.debug("jscpd report not found for %s; returning 0.0", repo_dir)
@@ -597,6 +646,9 @@ _MONITORING_FULL_SRE: Set[str] = {
 
 # More specific logging patterns (require actual logger instantiation)
 _BASIC_LOGGING_PATTERNS: List[str] = [
+    "console.log(",            # JS/TS — spec: "console.log statements alone count as Basic"
+    "console.error(",          # JS/TS
+    "console.warn(",           # JS/TS
     "logging.basicconfig",     # Python
     "logging.getlogger",       # Python
     "logrus.new",              # Go

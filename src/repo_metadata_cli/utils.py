@@ -30,15 +30,25 @@ def configure_logging(log_level: str = "INFO") -> None:
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 
-def run_cmd(cmd: List[str], cwd: Optional[Path] = None) -> str:
-    """Execute a shell command and return stdout as text. Returns an empty string on error."""
+def run_cmd(cmd: List[str], cwd: Optional[Path] = None, timeout: int = 720) -> str:
+    """Execute a shell command and return stdout as text. Returns an empty string on error.
+
+    timeout: seconds before the process is killed (default 120 s).  Prevents
+    hanging indefinitely on very large repositories or slow external tools.
+    """
     try:
         result = subprocess.check_output(
             cmd,
             cwd=str(cwd) if cwd else None,
             stderr=subprocess.DEVNULL,
+            timeout=timeout,
         )
         return result.decode("utf-8", errors="replace").strip()
+    except subprocess.TimeoutExpired:
+        logging.getLogger(__name__).warning(
+            "Command timed out after %ds: %s", timeout, " ".join(cmd)
+        )
+        return ""
     except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
         logging.getLogger(__name__).debug("Command failed: %s (%s)", " ".join(cmd), exc)
         return ""

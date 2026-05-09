@@ -19,13 +19,13 @@ class SourceFilesMetric(BaseMetric):
 
 
 class PrimaryLanguageMetric(BaseMetric):
-    """L: Language with the highest Code line count."""
+    """L: Language with the highest Code line count (excluding node_modules/vendor)."""
 
     column = "L"
     field_name = "primary_language"
 
     def compute(self, ctx: RepoContext) -> Any:
-        langs = ctx.scc_stats.get("languages", [])
+        langs = ctx.scc_stats_no_deps.get("languages", [])
         if not langs:
             return ""
         best = max(langs, key=lambda l: l["code"])
@@ -33,14 +33,14 @@ class PrimaryLanguageMetric(BaseMetric):
 
 
 class LangDistributionMetric(BaseMetric):
-    """M: JSON dict of language → fraction of total Code lines (only langs ≥ 1%)."""
+    """M: JSON dict of language → fraction of Code lines ≥ 1% (excl node_modules/vendor)."""
 
     column = "M"
     field_name = "lang_distribution"
 
     def compute(self, ctx: RepoContext) -> Any:
-        langs = ctx.scc_stats.get("languages", [])
-        total_code = ctx.scc_stats["total"]["code"]
+        langs = ctx.scc_stats_no_deps.get("languages", [])
+        total_code = ctx.scc_stats_no_deps["total"]["code"]
         if total_code == 0 or not langs:
             return json.dumps({})
         distribution = {

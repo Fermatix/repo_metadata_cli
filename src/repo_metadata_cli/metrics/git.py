@@ -19,7 +19,7 @@ _BOT_NAMES = frozenset({
 
 
 class CommitCountMetric(BaseMetric):
-    """N: Non-merge, non-revert commit count on main/default branch."""
+    """N: Total commit count across all branches (including merges)."""
 
     column = "N"
     field_name = "commit_count"

@@ -106,24 +106,29 @@ def run_pipeline(ctx: RepoContext) -> Dict[str, Any]:
 # Git helpers
 # ---------------------------------------------------------------------------
 
+_CLONE_TIMEOUT = 720  # 10 min — enough for a 4+ GB bundle on a slow disk
+
+
 def clone_bundle(bundle_path: Path, dest_dir: Path) -> Optional[Path]:
     repo_dir = dest_dir / bundle_path.stem
     env = os.environ.copy()
     env.setdefault("GIT_LFS_SKIP_SMUDGE", "1")
-    result = subprocess.run(
-        ["git", "clone", str(bundle_path), str(repo_dir)],
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "clone", str(bundle_path), str(repo_dir)],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=_CLONE_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("Clone timed out after %ds: %s", _CLONE_TIMEOUT, bundle_path)
+        return None
     if result.returncode != 0 or not repo_dir.exists():
         logger.warning("Failed to clone %s", bundle_path)
         return None
 
     # Ensure ALL remote branches are present as refs/remotes/origin/*.
-    # git clone only maps refs/heads/* by default; bundles created with --all
-    # may contain additional refs. A second fetch with an explicit refspec
-    # guarantees nothing is missed.
     subprocess.run(
         [
             "git", "-C", str(repo_dir), "fetch", "--quiet", "--force",
@@ -133,6 +138,7 @@ def clone_bundle(bundle_path: Path, dest_dir: Path) -> Optional[Path]:
         env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        timeout=_CLONE_TIMEOUT,
     )
 
     logger.debug("Cloned %s into %s", bundle_path.name, repo_dir)

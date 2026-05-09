@@ -1,151 +1,169 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
 
 INPUT_FILE="${1:-repos.txt}"
 MIRRORS_DIR="${2:-./mirrors}"
 BUNDLES_DIR="${3:-./tmp/doubletapp/bundles}"
 OK_FILE="${4:-./gitlab_repos.txt}"
+PARALLEL="${5:-8}"   # concurrent jobs; override via 5th arg or PARALLEL env var
+PARALLEL="${PARALLEL:-8}"
 
-mkdir -p "$MIRRORS_DIR" "$BUNDLES_DIR"
+mkdir -p "$MIRRORS_DIR" "$BUNDLES_DIR" "$(dirname "$OK_FILE")"
 : > "$OK_FILE"
 
 MIRRORS_DIR="$(cd "$MIRRORS_DIR" && pwd)"
 BUNDLES_DIR="$(cd "$BUNDLES_DIR" && pwd)"
 OK_FILE="$(cd "$(dirname "$OK_FILE")" && pwd)/$(basename "$OK_FILE")"
 
+# ---------------------------------------------------------------------------
+# Name helpers
+# ---------------------------------------------------------------------------
+
 safe_name() {
-  # Produces GitLab-safe and filesystem-safe name WITHOUT underscores.
-  # Examples:
-  #   https://github.com/org/repo.git            -> org--repo
-  #   git@github.com:org/repo.git               -> org--repo
-  #   https://gitlab.com/group/sub/repo         -> group--sub--repo
   local url="$1"
   local s path
-
   url="${url%.git}"
-
   s="$(echo "$url" | sed -E 's#^[a-zA-Z]+://##; s#:#/#; s#^[^@]+@##')"
   path="${s#*/}"
   path="${path#/}"
-
   path="$(echo "$path" | sed -E 's#/+#--#g')"
   path="$(echo "$path" | sed -E 's#[^A-Za-z0-9.-]+#-#g')"
   path="$(echo "$path" | sed -E 's#-+#-#g')"
   path="$(echo "$path" | sed -E 's#^[.-]+##; s#[.-]+$##')"
-
-  if [[ -z "$path" ]]; then
-    path="repo"
-  fi
-
-  if [[ "$path" == *.git || "$path" == *.atom ]]; then
-    path="${path}-repo"
-  fi
-
+  [[ -z "$path" ]] && path="repo"
+  [[ "$path" == *.git || "$path" == *.atom ]] && path="${path}-repo"
   echo "$path"
 }
 
 repo_only_name() {
-  # Extract ONLY the last path segment ("repo") and make it filesystem-safe.
-  # Examples:
-  #   https://github.com/org/repo.git          -> repo
-  #   git@github.com:org/repo.git             -> repo
-  #   https://gitlab.com/group/sub/repo       -> repo
   local url="$1"
   local s path base
-
-  # trim spaces
   url="$(echo "$url" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
-
-  # drop trailing "/" and trailing ".git"
   url="${url%/}"
   url="${url%.git}"
-
-  # normalize (remove scheme, convert ":" -> "/", drop userinfo)
   s="$(echo "$url" | sed -E 's#^[a-zA-Z]+://##; s#:#/#; s#^[^@]+@##')"
-
-  # drop host
   path="${s#*/}"
   path="${path#/}"
-
-  # take last segment
   base="${path##*/}"
-
-  # sanitize
   base="$(echo "$base" | sed -E 's#[^A-Za-z0-9.-]+#-#g')"
   base="$(echo "$base" | sed -E 's#-+#-#g')"
   base="$(echo "$base" | sed -E 's#^[.-]+##; s#[.-]+$##')"
-
-  if [[ -z "$base" ]]; then
-    base="repo"
-  fi
-
-  if [[ "$base" == *.git || "$base" == *.atom ]]; then
-    base="${base}-repo"
-  fi
-
+  [[ -z "$base" ]] && base="repo"
+  [[ "$base" == *.git || "$base" == *.atom ]] && base="${base}-repo"
   echo "$base"
 }
 
-while IFS= read -r repo; do
-  [[ -z "${repo// }" ]] && continue
-  [[ "$repo" =~ ^# ]] && continue
+# ---------------------------------------------------------------------------
+# Semaphore — limits to $PARALLEL concurrent jobs
+# ---------------------------------------------------------------------------
 
+_SEM="$(mktemp -u)"
+mkfifo "$_SEM"
+exec 9<>"$_SEM"
+rm -f "$_SEM"
+for _i in $(seq 1 "$PARALLEL"); do printf ' ' >&9; done
+
+acquire() { read -rn1 -u9; }
+release() { printf ' ' >&9; }
+
+# ---------------------------------------------------------------------------
+# Per-repo worker (runs in a subshell)
+# ---------------------------------------------------------------------------
+
+process_repo() {
+  local repo="$1"
+  local log_prefix
+
+  local mirror_name bundle_name repo_dir bundle_path
   mirror_name="$(safe_name "$repo")"
   bundle_name="$(repo_only_name "$repo")"
-
   repo_dir="$MIRRORS_DIR/$mirror_name.git"
   bundle_path="$BUNDLES_DIR/$bundle_name.bundle"
+  log_prefix="[$bundle_name]"
 
-  echo "=== $mirror_name ==="
-  echo "repo: $repo"
-  echo "bundle: $(basename "$bundle_path")"
+  # Skip if bundle already exists and is non-empty
+  if [[ -s "$bundle_path" ]]; then
+    echo "$log_prefix already exists, skipping"
+    release
+    return 0
+  fi
+
+  echo "$log_prefix fetching…"
 
   if [[ ! -d "$repo_dir" ]]; then
-    echo "→ init bare mirror: $repo_dir"
-    git init --bare "$repo_dir" >/dev/null
+    git init --bare "$repo_dir" >/dev/null 2>&1
     git -C "$repo_dir" remote add origin "$repo"
   else
-    echo "→ mirror exists, updating"
+    local current_url
     current_url="$(git -C "$repo_dir" remote get-url origin 2>/dev/null || true)"
     if [[ "$current_url" != "$repo" && -n "$repo" ]]; then
-      echo "→ refresh remote URL (was: ${current_url:-<none>})"
       git -C "$repo_dir" remote set-url origin "$repo"
     fi
   fi
 
-  # fetch EVERYTHING the remote advertises
-  git -C "$repo_dir" config remote.origin.mirror true || true
-  git -C "$repo_dir" config --unset-all remote.origin.fetch >/dev/null 2>&1 || true
+  git -C "$repo_dir" config remote.origin.mirror true        || true
+  git -C "$repo_dir" config --unset-all remote.origin.fetch  >/dev/null 2>&1 || true
   git -C "$repo_dir" config --add remote.origin.fetch "+refs/*:refs/*"
-  git -C "$repo_dir" config --add remote.origin.fetch "+refs/merge-requests/*:refs/merge-requests/*" || true
-  git -C "$repo_dir" config --add remote.origin.fetch "+refs/pull/*:refs/pull/*" || true
+  git -C "$repo_dir" config --add remote.origin.fetch "+refs/merge-requests/*:refs/merge-requests/*" 2>/dev/null || true
+  git -C "$repo_dir" config --add remote.origin.fetch "+refs/pull/*:refs/pull/*" 2>/dev/null || true
 
-  echo "→ fetch all refs (force/prune)"
-  git -C "$repo_dir" fetch --force --prune --prune-tags origin
+  if ! git -C "$repo_dir" fetch --force --prune --prune-tags origin 2>/dev/null; then
+    echo "$log_prefix ⚠️  fetch failed, skipping"
+    release
+    return 1
+  fi
 
-  # Ensure bundle has a valid HEAD
-  remote_head_ref="$(git -C "$repo_dir" ls-remote --symref origin HEAD 2>/dev/null | awk '/^ref:/ {print $2; exit}')"
+  # Set HEAD
+  local remote_head_ref fallback_head
+  remote_head_ref="$(git -C "$repo_dir" ls-remote --symref origin HEAD 2>/dev/null \
+    | awk '/^ref:/ {print $2; exit}')"
   if [[ -n "$remote_head_ref" ]]; then
-    git -C "$repo_dir" symbolic-ref HEAD "$remote_head_ref" || true
+    git -C "$repo_dir" symbolic-ref HEAD "$remote_head_ref" 2>/dev/null || true
   else
-    fallback_head="$(git -C "$repo_dir" for-each-ref --format='%(refname)' refs/heads | head -n1)"
-    [[ -n "$fallback_head" ]] && git -C "$repo_dir" symbolic-ref HEAD "$fallback_head" || true
+    fallback_head="$(git -C "$repo_dir" for-each-ref --format='%(refname)' refs/heads \
+      | head -n1)"
+    [[ -n "$fallback_head" ]] && git -C "$repo_dir" symbolic-ref HEAD "$fallback_head" 2>/dev/null || true
   fi
 
-  if ! git -C "$repo_dir" show-ref --quiet; then
-    echo "⚠️ no refs fetched (empty repo or no access). skip bundle."
-    echo
-    continue
+  if ! git -C "$repo_dir" show-ref --quiet 2>/dev/null; then
+    echo "$log_prefix ⚠️  no refs (empty repo or no access), skipping"
+    release
+    return 1
   fi
 
-  echo "→ create bundle: $bundle_path"
   rm -f "$bundle_path"
-  git -C "$repo_dir" bundle create "$bundle_path" --all
+  if git -C "$repo_dir" bundle create "$bundle_path" --all 2>/dev/null; then
+    echo "$log_prefix ✅ done"
+    # Atomic append — safe for lines < 512 bytes on macOS/Linux
+    echo "$repo" >> "$OK_FILE"
+  else
+    echo "$log_prefix ⚠️  bundle create failed"
+    release
+    return 1
+  fi
 
-  echo "$repo" >> "$OK_FILE"
+  release
+}
 
-  echo "✅ done"
-  echo
+export -f process_repo safe_name repo_only_name release
+export MIRRORS_DIR BUNDLES_DIR OK_FILE
+
+# ---------------------------------------------------------------------------
+# Main loop — dispatch jobs with semaphore
+# ---------------------------------------------------------------------------
+
+total=0
+while IFS= read -r repo; do
+  [[ -z "${repo// }" ]] && continue
+  [[ "$repo" =~ ^# ]]   && continue
+  (( total++ )) || true
+  acquire                        # blocks when PARALLEL slots are full
+  process_repo "$repo" &
 done < "$INPUT_FILE"
 
+wait   # wait for all background jobs to finish
+exec 9>&-
+
+echo ""
 echo "OK list: $OK_FILE"
+echo "Processed $total repos with up to $PARALLEL parallel workers."
