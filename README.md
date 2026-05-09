@@ -100,7 +100,7 @@ https://github.com/your-org/repo-three.git
 Выполните одну команду — она загрузит репозитории, соберёт PR-статистику и сформирует CSV:
 
 ```bash
-OPENROUTER_API_KEY=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 \
+OPENROUTER_API_KEY=<key from .env.example> \
 repo-metadata metadata repos.txt \
   --gitlab-token ВАШ_GITLAB_TOKEN \
   --pr-cache pr_cache.json \
