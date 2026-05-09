@@ -19,21 +19,23 @@ class RawLocMetric(BaseMetric):
 
 
 class LogicalLocMetric(BaseMetric):
-    """G: Code lines only — excludes blanks and comments (scc Code column)."""
+    """G: scc Code column, excluding node_modules/, vendor/, dist/, build/."""
 
     column = "G"
     field_name = "logical_loc"
 
     def compute(self, ctx: RepoContext) -> Any:
-        return ctx.scc_stats["total"]["code"]
+        return ctx.scc_stats_no_deps["total"]["code"]
 
 
 class AutoGenLocMetric(BaseMetric):
-    """H: Code lines in auto-generated files (vendor/, *_pb2.py, lock files, etc.)."""
+    """H: scc Code lines in auto-generated files, capped at Logical LOC."""
 
     column = "H"
     field_name = "autogen_loc"
 
     def compute(self, ctx: RepoContext) -> Any:
         ext_map = dict(ctx.settings.tree_sitter.extension_language_map)
-        return ctx._cached("autogen_loc", lambda: get_auto_gen_loc(ctx.repo_path, ext_map))
+        autogen = ctx._cached("autogen_loc", lambda: get_auto_gen_loc(ctx.repo_path, ext_map))
+        logical = ctx.scc_stats_no_deps["total"]["code"]
+        return min(autogen, logical)

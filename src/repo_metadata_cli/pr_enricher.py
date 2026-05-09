@@ -96,7 +96,7 @@ def _extract_original_gitlab_path(bundle_path: Path) -> Optional[str]:
             out = subprocess.check_output(
                 ["git", "-C", str(repo_dir), "log", "--all", "--merges", "--format=%b"],
                 stderr=subprocess.DEVNULL,
-                timeout=60,
+                timeout=360,
             ).decode("utf-8", errors="ignore")
         except Exception:
             return None
@@ -114,7 +114,7 @@ def _http_post(url: str, payload: dict, headers: dict) -> dict:
     delay = 2.0
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
-            resp = requests.post(url, json=payload, headers=headers, timeout=30)
+            resp = requests.post(url, json=payload, headers=headers, timeout=360)
         except Exception as exc:
             if attempt == _MAX_RETRIES:
                 raise
@@ -414,9 +414,7 @@ def enrich_pr_cache(
             # bundles available, try to find the *original* project path from
             # the bundle's merge-commit history.
             cached_entry = existing.get(stem)
-            needs_resolve = bundles_dir and (
-                cached_entry is None or cached_entry.get("total_pr", 0) == 0
-            )
+            needs_resolve = bundles_dir and cached_entry is None
             if needs_resolve:
                 bundle_path = _find_bundle(bundles_dir, stem)
                 if bundle_path:
@@ -447,20 +445,15 @@ def enrich_pr_cache(
 
     # ---- GitLab ----
     if gitlab_list and gitlab_token:
-        # Count entries that need fetching: absent or previously returned total_pr=0
-        todo = sum(
-            1 for s, _ in gitlab_list
-            if cache.get(s, {}).get("total_pr", 0) == 0
-        )
+        todo = sum(1 for s, _ in gitlab_list if s not in cache)
         skip = len(gitlab_list) - todo
         logger.info("GitLab: %d repos (%d cached, %d to fetch)", len(gitlab_list), skip, todo)
         for stem, path in gitlab_list:
-            if cache.get(stem, {}).get("total_pr", 0) > 0:
-                continue  # already have a valid non-zero count
+            if stem in cache:
+                continue  # already cached
             result = fetch_gitlab_repo(stem, path, gitlab_token, gitlab_base_url)
-            if result:
-                cache[stem] = result
-            # Save after every repo for resume safety
+            # Always cache, even on 404/failure — prevents infinite retries
+            cache[stem] = result or {"total_pr": 0, "reviewed_pr": 0, "url": path}
             _save_cache(cache_file, cache)
     elif gitlab_list and not gitlab_token:
         logger.warning("GitLab repos found but GITLAB_TOKEN not provided — skipping")

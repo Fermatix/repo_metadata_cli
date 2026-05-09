@@ -43,17 +43,30 @@ class RepoContext:
 
     @property
     def scc_stats(self) -> dict:
-        """Parsed output of `scc --format json <repo_path>`. Falls back to Python counter if scc unavailable."""
+        """scc stats on ALL files (no dir exclusions) — used for Raw LOC (F) and language distribution."""
         from .metric_utils import get_scc_stats  # late import to avoid circularity
         ext_map = dict(self.settings.tree_sitter.extension_language_map)
         return self._cached("scc_stats", lambda: get_scc_stats(self.repo_path, ext_map))
 
     @property
+    def scc_stats_no_deps(self) -> dict:
+        """scc stats excluding node_modules/, vendor/, dist/, build/ — used for Logical LOC (G)."""
+        from .metric_utils import get_scc_stats  # late import to avoid circularity
+        ext_map = dict(self.settings.tree_sitter.extension_language_map)
+        return self._cached(
+            "scc_stats_no_deps",
+            lambda: get_scc_stats(self.repo_path, ext_map, exclude_dep_dirs=True),
+        )
+
+    @property
     def git_log_no_merges(self) -> list[str]:
-        """Non-merge, non-revert commit one-liners across all branches."""
+        """Non-merge, non-revert commits on the default branch (spec column N)."""
         def _compute() -> list[str]:
-            raw = run_cmd(["git", "log", "--all", "--oneline", "--no-merges"], cwd=self.repo_path)
-            return [line for line in raw.splitlines() if line.strip() and "revert" not in line.lower()]
+            raw = run_cmd(["git", "log", "--no-merges", "--oneline"], cwd=self.repo_path)
+            return [
+                line for line in raw.splitlines()
+                if line.strip() and "revert" not in line.lower()
+            ]
         return self._cached("git_log_no_merges", _compute)
 
     @property
