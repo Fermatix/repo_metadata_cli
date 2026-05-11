@@ -31,7 +31,6 @@ htmlcov/
 
 # CLI outputs
 *.csv
+*.txt
+*.json
 tmp/
-pr_cache.json
-pr_cache_test.json
-repos.txt

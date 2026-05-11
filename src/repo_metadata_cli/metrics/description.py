@@ -20,7 +20,13 @@ _SYSTEM_PROMPT = (
     "Write exactly 1 sentence. Cover: (1) what the system does, (2) its type (mobile app / backend API / web app / CLI / library / etc.), "
     "(3) the main tech stack. "
     "No bullet points, no markdown, no headers, no hyphens as list separators. Plain prose only. "
-    "Sound like a human engineer, not a doc generator."
+    "Sound like a human engineer, not a doc generator. "
+    "CRITICAL — Privacy and anonymity rules you must follow without exception: "
+    "Do NOT mention any project names, product names, company names, brand names, or organisation names found in the code or files. "
+    "Do NOT include any personally identifiable information (PII): no person names, emails, usernames, phone numbers, URLs, or domain names. "
+    "Do NOT reproduce any string that looks like a secret, token, key, or credential. "
+    "Describe only the technical purpose and architecture in generic terms (e.g. 'a REST API', 'a React frontend', 'a data-processing pipeline'). "
+    "If you are unsure whether a term is a proper noun or PII, omit it and use a generic description instead."
 )
 
 _USER_TEMPLATE = """\
