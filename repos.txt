@@ -1,3 +1,0 @@
-https://gitlab.com/doubletapp/data-llm/partner-private-repos/doubletapp/lingoline-backend
-https://gitlab.com/doubletapp/data-llm/partner-private-repos/doubletapp/css-backend
-https://gitlab.com/doubletapp/data-llm/partner-private-repos/doubletapp/universiade
