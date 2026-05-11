@@ -20,6 +20,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Dict, Optional, Tuple
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,8 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
-_GITLAB_REST_BASE = "https://gitlab.com/api/v4"
+_GITLAB_DOMAIN = "gitlab.com"
+_GITLAB_REST_BASE = f"https://{_GITLAB_DOMAIN}/api/v4"
 
 # Repos per GraphQL alias batch.  Keep low enough to stay under GitHub's
 # 500 000 node-hour budget; 20 × 100 PRs × 1 review-check = 2000 nodes/query.
@@ -61,13 +63,19 @@ def _parse_github_owner_repo(url: str) -> Optional[Tuple[str, str]]:
     return m.group(1), m.group(2)
 
 
-def _parse_gitlab_project_path(url: str) -> Optional[str]:
-    """Return URL-encoded project path for a gitlab.com URL, or None."""
+def _parse_gitlab_project_path(
+    url: str, gitlab_hosts: tuple[str, ...] = (_GITLAB_DOMAIN,)
+) -> Optional[str]:
+    """Return URL-encoded project path for a GitLab URL, or None.
+
+    Checks all hosts in gitlab_hosts so self-hosted instances are supported.
+    """
     url = url.strip().removesuffix(".git")
-    m = re.search(r"gitlab\.com[:/](.+)$", url)
-    if not m:
-        return None
-    return m.group(1).replace("/", "%2F")
+    for host in gitlab_hosts:
+        m = re.search(rf"{re.escape(host)}[:/](.+)$", url)
+        if m:
+            return m.group(1).replace("/", "%2F")
+    return None
 
 
 def _find_bundle(bundles_dir: Path, stem: str) -> Optional[Path]:
@@ -354,10 +362,12 @@ def fetch_gitlab_repo(
         page += 1
 
     logger.info("GitLab %s: total_mr=%d reviewed_pr=%d", decoded_path, total_mr, reviewed)
+    parsed_base = urlparse(base_url)
+    instance_url = f"{parsed_base.scheme}://{parsed_base.netloc}"
     return {
         "total_pr": total_mr,
         "reviewed_pr": reviewed,
-        "url": f"https://gitlab.com/{encoded}",
+        "url": f"{instance_url}/{decoded_path}",
     }
 
 
@@ -397,6 +407,10 @@ def enrich_pr_cache(
     ]
     logger.info("Processing %d repo URLs from %s", len(urls), repos_file)
 
+    # Build the set of GitLab hosts to recognise: always gitlab.com + the custom instance host.
+    _custom_host = urlparse(gitlab_base_url).netloc
+    gitlab_hosts = tuple({_GITLAB_DOMAIN, _custom_host} - {""})
+
     github_batch: list[Tuple[str, str, str]] = []  # (stem, owner, repo)
     gitlab_list: list[Tuple[str, str]] = []         # (stem, project_path_encoded)
     unrecognised: list[str] = []
@@ -407,7 +421,7 @@ def enrich_pr_cache(
         if gh:
             github_batch.append((stem, gh[0], gh[1]))
             continue
-        gl = _parse_gitlab_project_path(url)
+        gl = _parse_gitlab_project_path(url, gitlab_hosts=gitlab_hosts)
         if gl:
             resolved_path = gl
             # If the cached entry for this stem is zero (or absent) and we have

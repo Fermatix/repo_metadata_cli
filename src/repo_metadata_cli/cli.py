@@ -94,6 +94,11 @@ def metadata(
              "enrich-prs step is not required.",
         show_default=False,
     ),
+    gitlab_base_url: str = typer.Option(
+        "https://gitlab.com/api/v4",
+        "--gitlab-base-url",
+        help="GitLab API base URL (override for self-hosted instances, e.g. https://git.example.com/api/v4).",
+    ),
 ) -> None:
     """Fetch bundles, enrich PR counts, and compute metadata — all in one step.
 
@@ -151,6 +156,7 @@ def metadata(
                     bundles_dir=effective_bundles_dir,
                     github_token=github_token,
                     gitlab_token=gitlab_token,
+                    gitlab_base_url=gitlab_base_url,
                 )
             except Exception as exc:
                 logger.warning("PR enrichment failed: %s — continuing with existing cache", exc)

@@ -75,7 +75,10 @@ repo-metadata fetch-grammars
 https://gitlab.com/your-company/repo-one.git
 https://gitlab.com/your-company/repo-two.git
 https://github.com/your-org/repo-three.git
+https://git.your-company.ru/your-company/repo-four.git
 ```
+
+Поддерживаются репозитории на GitLab.com, GitHub.com, а также на корпоративных GitLab-инстансах с произвольным доменом.
 
 Строки, начинающиеся с `#`, игнорируются (можно использовать для комментариев).
 
@@ -83,12 +86,12 @@ https://github.com/your-org/repo-three.git
 
 ## Шаг 4. Получение токенов доступа
 
-**GitLab:** (Если ваши репозитории хранятся ан GitLab)
+**GitLab:** (Если ваши репозитории хранятся на GitLab.com или корпоративном GitLab)
 1. Откройте GitLab → User Settings → Access Tokens
 2. Создайте токен с правом `read_repository` и `read_api`
 3. Скопируйте значение токена
 
-**GitHub:** (Если ваши репозитории хранятся ан GitHub)
+**GitHub:** (Если ваши репозитории хранятся на GitHub)
 1. Откройте GitHub → Settings → Developer settings → Personal access tokens
 2. Создайте токен с правом `repo` (read)
 3. Скопируйте значение токена
@@ -103,7 +106,7 @@ https://github.com/your-org/repo-three.git
 Выполните одну команду — она загрузит репозитории, соберёт PR-статистику и сформирует CSV:
 
 ```bash
-OPENROUTER_API_KEY= ВАШ_OPENROUTER_TOKEN \
+OPENROUTER_API_KEY=ВАШ_OPENROUTER_TOKEN \
 repo-metadata metadata repos.txt \
   --gitlab-token ВАШ_GITLAB_TOKEN \
   --pr-cache pr_cache.json \
@@ -114,6 +117,19 @@ repo-metadata metadata repos.txt \
 - `ВАШ_OPENROUTER_TOKEN` — токен из шага 4
 - `ВАШ_GITLAB_TOKEN` — токен из шага 4 (для GitHub используйте `--github-token`)
 - Если репозитории публичные, токен можно не указывать
+
+**Если ваши репозитории хранятся на корпоративном GitLab** (не на gitlab.com), добавьте параметр `--gitlab-base-url` с адресом API вашего инстанса:
+
+```bash
+OPENROUTER_API_KEY=ВАШ_OPENROUTER_TOKEN \
+repo-metadata metadata repos.txt \
+  --gitlab-token ВАШ_GITLAB_TOKEN \
+  --gitlab-base-url https://git.your-company.ru/api/v4 \
+  --pr-cache pr_cache.json \
+  --output-csv repo_metadata.csv
+```
+
+Адрес API строится по шаблону: `https://ВАШ_ДОМЕН/api/v4`.
 
 **Примерное время выполнения:** 2–5 минут на репозиторий в зависимости от его размера.
 
@@ -136,6 +152,7 @@ repo-metadata metadata repos.txt \
 | Ошибка клонирования репозитория | Проверьте токен и доступность репозитория: `git clone URL` |
 | `scc: command not found` | Установите `scc` (шаг 1) — без него LOC-метрики будут менее точными, но утилита продолжит работу |
 | Колонки `total_pr_count`, `reviewed_pr_count` = 0 | Убедитесь, что токен указан и имеет право `read_api` |
+| `total_pr_count` = 0 для корпоративного GitLab | Добавьте `--gitlab-base-url https://ВАШ_ДОМЕН/api/v4` |
 
 ---
 
