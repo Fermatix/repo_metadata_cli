@@ -81,17 +81,20 @@ https://github.com/your-org/repo-three.git
 
 ---
 
-## Шаг 4. Получение токена доступа к репозиториям
+## Шаг 4. Получение токенов доступа
 
-**GitLab:**
+**GitLab:** (Если ваши репозитории хранятся ан GitLab)
 1. Откройте GitLab → User Settings → Access Tokens
 2. Создайте токен с правом `read_repository` и `read_api`
 3. Скопируйте значение токена
 
-**GitHub:**
+**GitHub:** (Если ваши репозитории хранятся ан GitHub)
 1. Откройте GitHub → Settings → Developer settings → Personal access tokens
 2. Создайте токен с правом `repo` (read)
 3. Скопируйте значение токена
+
+**OpenRouter**
+1. Мы отправили его вам в сообщении
 
 ---
 
@@ -100,7 +103,7 @@ https://github.com/your-org/repo-three.git
 Выполните одну команду — она загрузит репозитории, соберёт PR-статистику и сформирует CSV:
 
 ```bash
-OPENROUTER_API_KEY=<key from .env.example> \
+OPENROUTER_API_KEY= ВАШ_OPENROUTER_TOKEN \
 repo-metadata metadata repos.txt \
   --gitlab-token ВАШ_GITLAB_TOKEN \
   --pr-cache pr_cache.json \
@@ -108,6 +111,7 @@ repo-metadata metadata repos.txt \
 ```
 
 Замените:
+- `ВАШ_OPENROUTER_TOKEN` — токен из шага 4
 - `ВАШ_GITLAB_TOKEN` — токен из шага 4 (для GitHub используйте `--github-token`)
 - Если репозитории публичные, токен можно не указывать
 
