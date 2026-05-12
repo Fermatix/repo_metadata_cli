@@ -11,6 +11,28 @@ PARALLEL="${PARALLEL:-8}"
 mkdir -p "$MIRRORS_DIR" "$BUNDLES_DIR" "$(dirname "$OK_FILE")"
 : > "$OK_FILE"
 
+# Disable interactive terminal prompts — prevent any credential dialogs.
+export GIT_TERMINAL_PROMPT=0
+
+# ---------------------------------------------------------------------------
+# Inject auth token into an HTTPS URL, bypassing credential helpers entirely.
+# Global credential helpers (e.g. osxkeychain, HUGGINGFACE_TOKEN) are ignored
+# because git extracts embedded credentials from the URL before consulting them.
+# ---------------------------------------------------------------------------
+auth_url() {
+  local url="$1"
+  local rest
+  if [[ "$url" =~ ^https://github\.com/ ]] && [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    rest="${url#https://}"
+    printf 'https://x-access-token:%s@%s' "${GITHUB_TOKEN}" "$rest"
+  elif [[ "$url" =~ ^https:// ]] && [[ -n "${GITLAB_TOKEN:-}" ]]; then
+    rest="${url#https://}"
+    printf 'https://oauth2:%s@%s' "${GITLAB_TOKEN}" "$rest"
+  else
+    printf '%s' "$url"
+  fi
+}
+
 MIRRORS_DIR="$(cd "$MIRRORS_DIR" && pwd)"
 BUNDLES_DIR="$(cd "$BUNDLES_DIR" && pwd)"
 OK_FILE="$(cd "$(dirname "$OK_FILE")" && pwd)/$(basename "$OK_FILE")"
@@ -90,15 +112,15 @@ process_repo() {
 
   echo "$log_prefix fetching…"
 
+  # Build authenticated URL (token embedded); keeps $repo clean for logging/OK file.
+  local clone_url
+  clone_url="$(auth_url "$repo")"
+
   if [[ ! -d "$repo_dir" ]]; then
     git init --bare "$repo_dir" >/dev/null 2>&1
-    git -C "$repo_dir" remote add origin "$repo"
+    git -C "$repo_dir" remote add origin "$clone_url"
   else
-    local current_url
-    current_url="$(git -C "$repo_dir" remote get-url origin 2>/dev/null || true)"
-    if [[ "$current_url" != "$repo" && -n "$repo" ]]; then
-      git -C "$repo_dir" remote set-url origin "$repo"
-    fi
+    git -C "$repo_dir" remote set-url origin "$clone_url"
   fi
 
   git -C "$repo_dir" config remote.origin.mirror true        || true
@@ -107,7 +129,7 @@ process_repo() {
   git -C "$repo_dir" config --add remote.origin.fetch "+refs/merge-requests/*:refs/merge-requests/*" 2>/dev/null || true
   git -C "$repo_dir" config --add remote.origin.fetch "+refs/pull/*:refs/pull/*" 2>/dev/null || true
 
-  if ! git -C "$repo_dir" fetch --force --prune --prune-tags origin 2>/dev/null; then
+  if ! git -C "$repo_dir" fetch --force --prune --prune-tags origin; then
     echo "$log_prefix ⚠️  fetch failed, skipping"
     release
     return 1
@@ -145,7 +167,7 @@ process_repo() {
   release
 }
 
-export -f process_repo safe_name repo_only_name release
+export -f process_repo safe_name repo_only_name release auth_url
 export MIRRORS_DIR BUNDLES_DIR OK_FILE
 
 # ---------------------------------------------------------------------------

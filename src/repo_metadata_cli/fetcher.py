@@ -31,6 +31,7 @@ def fetch_bundles(
     mirrors_dir: Path,
     ok_file: Path,
     gitlab_token: Optional[str] = None,
+    github_token: Optional[str] = None,
 ) -> None:
     """
     Run the fetch_bundles.sh script to mirror each repo and create *.bundle files.
@@ -40,9 +41,8 @@ def fetch_bundles(
         bundles_dir:  Directory where *.bundle files will be written.
         mirrors_dir:  Directory used for bare-mirror clones (intermediate state).
         ok_file:      File that will receive successfully processed repo URLs.
-        gitlab_token: Optional GitLab/GitHub personal access token injected as
-                      GITLAB_TOKEN environment variable so private repos are
-                      accessible via HTTPS credential helpers.
+        gitlab_token: Optional GitLab personal access token (GITLAB_TOKEN env var).
+        github_token: Optional GitHub personal access token (GITHUB_TOKEN env var).
     """
     script = _script_path()
     if not script.exists():
@@ -55,6 +55,8 @@ def fetch_bundles(
     env = os.environ.copy()
     if gitlab_token:
         env["GITLAB_TOKEN"] = gitlab_token
+    if github_token:
+        env["GITHUB_TOKEN"] = github_token
 
     cmd = [
         "bash",
