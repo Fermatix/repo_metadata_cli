@@ -150,7 +150,7 @@ def latest_branch_by_commit(repo_dir: Path) -> Optional[str]:
         [
             "git", "for-each-ref",
             "--sort=-committerdate",
-            "--format=%(refname:short)|%(committerdate:iso8601)",
+            "--format=%(refname)|%(committerdate:iso8601)",
             "refs/heads", "refs/remotes",
         ],
         cwd=repo_dir,
@@ -158,18 +158,18 @@ def latest_branch_by_commit(repo_dir: Path) -> Optional[str]:
     for line in refs_raw.splitlines():
         if "|" not in line:
             continue
-        name, _ = line.split("|", 1)
-        name = name.strip()
-        if not name or name.endswith("/HEAD") or name == "HEAD":
+        ref, _ = line.split("|", 1)
+        ref = ref.strip()
+        if not ref or ref.endswith("/HEAD"):
             continue
-        return name
-    current = run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_dir)
+        return ref
+    current = run_cmd(["git", "rev-parse", "HEAD"], cwd=repo_dir)
     return current or None
 
 
 def checkout_ref(repo_dir: Path, ref: str) -> bool:
     result = subprocess.run(
-        ["git", "-C", str(repo_dir), "checkout", "--force", "--quiet", ref],
+        ["git", "-C", str(repo_dir), "checkout", "--force", "--quiet", "--detach", ref],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
