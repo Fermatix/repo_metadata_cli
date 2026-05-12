@@ -21,20 +21,23 @@ class RepoContext:
     """Shared state for a single repository analysis pass. Expensive computations are cached."""
 
     repo_path: Path
-    bundle_path: Path
     settings: AppSettings
     tree_sitter: Optional[TreeSitterManager]
     allowed_files: AllowedFiles
+    bundle_path: Optional[Path] = None
     _cache: dict = field(default_factory=dict, repr=False)
 
     @property
     def bundle_name(self) -> str:
-        return self.bundle_path.stem
+        if self.bundle_path is not None:
+            return self.bundle_path.stem
+        return self.repo_path.name
 
     @property
     def vendor_name(self) -> str:
-        """Derived from the parent directory of the bundle file."""
-        return self.bundle_path.parent.name
+        if self.bundle_path is not None:
+            return self.bundle_path.parent.name
+        return self.repo_path.parent.name
 
     def _cached(self, key: str, fn: Callable[[], Any]) -> Any:
         if key not in self._cache:
@@ -71,10 +74,17 @@ class RepoContext:
 
     @property
     def file_tree(self) -> list[str]:
-        """Up to 40 file paths tracked by git (for LLM context)."""
+        """Up to 40 file paths (git-tracked when available, filesystem walk otherwise)."""
         def _compute() -> list[str]:
             raw = run_cmd(["git", "ls-tree", "-r", "--name-only", "HEAD"], cwd=self.repo_path)
-            return raw.splitlines()[:40]
+            if raw:
+                return raw.splitlines()[:40]
+            files = sorted(
+                str(p.relative_to(self.repo_path))
+                for p in self.repo_path.rglob("*")
+                if p.is_file() and not any(part.startswith(".") for part in p.parts)
+            )
+            return files[:40]
         return self._cached("file_tree", _compute)
 
 

@@ -191,7 +191,21 @@ def build_repo_context(
         logger.debug("Failed to checkout %s; staying on HEAD", branch_ref)
     return RepoContext(
         repo_path=repo_dir,
+        settings=settings,
+        tree_sitter=ts_manager,
+        allowed_files=allowed_files,
         bundle_path=bundle_path,
+    )
+
+
+def build_local_repo_context(
+    local_path: Path,
+    settings: AppSettings,
+    allowed_files: AllowedFiles,
+    ts_manager: Optional[TreeSitterManager],
+) -> RepoContext:
+    return RepoContext(
+        repo_path=local_path,
         settings=settings,
         tree_sitter=ts_manager,
         allowed_files=allowed_files,
@@ -225,27 +239,47 @@ def run_metadata_pipeline(
     ts_manager: Optional[TreeSitterManager],
 ) -> None:
     bundle_files = sorted(dataset_dir.rglob("*.bundle"))
-    logger.info("Found %d bundle files under %s", len(bundle_files), dataset_dir)
-    if not bundle_files:
-        logger.warning("No *.bundle files found under %s; nothing to process.", dataset_dir)
-        return
+
+    if bundle_files:
+        logger.info("Found %d bundle files under %s", len(bundle_files), dataset_dir)
+        items = bundle_files
+        local_mode = False
+    else:
+        local_dirs = sorted(
+            p for p in dataset_dir.iterdir()
+            if p.is_dir() and not p.name.startswith(".")
+        )
+        if not local_dirs:
+            logger.warning(
+                "No *.bundle files and no subdirectories found under %s; nothing to process.",
+                dataset_dir,
+            )
+            return
+        logger.info(
+            "Found %d local repo directories under %s (no-VCS mode)",
+            len(local_dirs), dataset_dir,
+        )
+        items = local_dirs
+        local_mode = True
 
     processed = _processed_repos(csv_path)
 
-    for bundle_path in tqdm(bundle_files, desc="Metadata"):
-        repo_name = bundle_path.stem
+    for item in tqdm(items, desc="Metadata"):
+        repo_name = item.name if local_mode else item.stem
         if repo_name in processed:
             logger.debug("Skipping %s (already processed)", repo_name)
             continue
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ctx = build_repo_context(
-                bundle_path, settings, allowed_files, ts_manager, Path(tmpdir)
-            )
-            if ctx is None:
-                logger.error("Skipping %s: failed to materialize repository", bundle_path.name)
-                continue
+        if local_mode:
+            ctx = build_local_repo_context(item, settings, allowed_files, ts_manager)
             row = run_pipeline(ctx)
+        else:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                ctx = build_repo_context(item, settings, allowed_files, ts_manager, Path(tmpdir))
+                if ctx is None:
+                    logger.error("Skipping %s: failed to materialize repository", item.name)
+                    continue
+                row = run_pipeline(ctx)
 
         pd.DataFrame([row]).to_csv(
             csv_path,
