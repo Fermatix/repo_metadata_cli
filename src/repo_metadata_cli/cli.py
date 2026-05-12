@@ -130,6 +130,7 @@ def metadata(
                 mirrors_dir=mirrors_dir,
                 ok_file=ok_file,
                 gitlab_token=gitlab_token,
+                github_token=github_token,
             )
         except (FileNotFoundError, RuntimeError) as exc:
             logger.error("Fetch step failed: %s", exc)
