@@ -17,6 +17,7 @@ from .base_metric import BaseMetric, RepoContext
 from .metrics import (  # metrics/ package — all metric classes via __init__.py
     AutoGenLocMetric,
     AvgFuncLengthMetric,
+    DepDirLocMetric,
     CIChecksMetric,
     CommitCountMetric,
     ContainerizedMetric,
@@ -78,6 +79,7 @@ METRICS: list[Type[BaseMetric]] = [
     ReadmeQualityMetric,   # Y
     IssueTrackerMetric,    # Z
     AvgFuncLengthMetric,   # AA
+    DepDirLocMetric,       # AE (optional)
 ]
 
 # Empty placeholder columns per spec.

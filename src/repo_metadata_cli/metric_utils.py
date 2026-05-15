@@ -256,24 +256,20 @@ def _python_loc_fallback(repo_dir: Path, extension_language_map: Dict[str, str])
     return {"languages": languages, "total": total_stats}
 
 
-# Directories excluded from Logical LOC (G) per spec — dependency/build artifacts.
-# Raw LOC (F) is NOT filtered; it uses scc with no exclusions.
-_SCC_DEP_DIRS = "node_modules,vendor,dist,build,bower_components"
-
-
 def get_scc_stats(
     repo_dir: Path,
     extension_language_map: Optional[Dict[str, str]] = None,
-    exclude_dep_dirs: bool = False,
+    exclude_dirs: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Run `scc --format json` and return parsed language statistics.
 
     Falls back to a Python-based line counter when scc is not installed.
     The fallback uses git ls-files and single-line comment heuristics.
+    Pass `exclude_dirs` to skip dependency/build directories (Logical LOC mode).
     """
     cmd = ["scc", "--format", "json", "--no-complexity"]
-    if exclude_dep_dirs:
-        cmd += ["--exclude-dir", _SCC_DEP_DIRS]
+    if exclude_dirs:
+        cmd += ["--exclude-dir", ",".join(exclude_dirs)]
     cmd.append(str(repo_dir))
     out = run_cmd(cmd)
     if out:
@@ -291,9 +287,10 @@ def get_scc_stats(
 # Auto-generated LOC (column H)
 # ---------------------------------------------------------------------------
 
+_DEP_DIR_NAMES: Set[str] = {"vendor", "node_modules", "bower_components"}
+
 _AUTOGEN_DIRS: Set[str] = {
-    "vendor", "node_modules", "dist", "build", "generated",
-    "migrations", "__generated__", ".cache", "bower_components",
+    "generated", "migrations", "__generated__", ".cache",
     ".next", ".nuxt", "out",
 }
 
@@ -321,10 +318,10 @@ _AUTOGEN_HEADER_MARKERS: List[str] = [
 ]
 
 
-def _is_autogen_file(file_path: Path, repo_root: Path) -> bool:
+def _is_autogen_file(file_path: Path, repo_root: Path, autogen_dirs: Set[str]) -> bool:
     rel = file_path.relative_to(repo_root)
     for part in rel.parts[:-1]:
-        if part.lower() in _AUTOGEN_DIRS:
+        if part.lower() in autogen_dirs:
             return True
     if rel.name.lower() in _AUTOGEN_EXACT_NAMES:
         return True
@@ -364,18 +361,24 @@ def _scc_code_for_files(files: List[Path]) -> int:
     return total
 
 
-def get_auto_gen_loc(repo_dir: Path, extension_language_map: Optional[Dict[str, str]] = None) -> int:
+def get_auto_gen_loc(
+    repo_dir: Path,
+    extension_language_map: Optional[Dict[str, str]] = None,
+    autogen_dirs: Optional[Set[str]] = None,
+) -> int:
     """Count scc Code lines in auto-generated files (spec column H).
 
     Identifies auto-gen files by filename patterns, directory patterns, file
     header markers, and lock files.  Uses scc (same Code column as logical_loc)
     with a Python counter fallback when scc is unavailable.
+    Pass `autogen_dirs` to override the default set of auto-generated directories.
     """
+    _dirs = autogen_dirs if autogen_dirs is not None else _AUTOGEN_DIRS
     auto_gen: List[Path] = []
     for path in repo_dir.rglob("*"):
         if not path.is_file() or ".git" in path.parts:
             continue
-        if _is_autogen_file(path, repo_dir):
+        if _is_autogen_file(path, repo_dir, _dirs):
             auto_gen.append(path)
     if not auto_gen:
         return 0
@@ -403,6 +406,26 @@ def get_auto_gen_loc(repo_dir: Path, extension_language_map: Optional[Dict[str, 
                 continue
             total_code += 1
     return total_code
+
+
+def get_dep_dir_loc(repo_dir: Path, dep_dir_names: Optional[Set[str]] = None) -> int:
+    """Count scc Code lines in dependency directories (vendor/, node_modules/, bower_components/).
+
+    Excluded from both Logical LOC and Auto-Generated LOC; reported separately as column AE.
+    Returns 0 if no dependency directories are present or scc is unavailable.
+    Pass `dep_dir_names` to override the default set of dependency directories.
+    """
+    _names = dep_dir_names if dep_dir_names is not None else _DEP_DIR_NAMES
+    dep_paths = [repo_dir / name for name in _names if (repo_dir / name).is_dir()]
+    if not dep_paths:
+        return 0
+    total = 0
+    for dep_path in dep_paths:
+        out = run_cmd(["scc", "--format", "json", "--no-complexity", str(dep_path)], timeout=120)
+        if out:
+            stats: Dict[str, Any] = _parse_scc_output(out)
+            total += int(stats["total"]["code"])
+    return total
 
 
 # ---------------------------------------------------------------------------
