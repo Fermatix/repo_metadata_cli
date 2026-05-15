@@ -32,9 +32,26 @@ class TreeSitterSettings:
 
 
 @dataclass
+class MetricsSettings:
+    dep_dirs: List[str] = field(
+        default_factory=lambda: ["vendor", "node_modules", "bower_components"]
+    )
+    scc_exclude_dirs: List[str] = field(
+        default_factory=lambda: ["node_modules", "vendor", "dist", "build", "bower_components"]
+    )
+    autogen_dirs: List[str] = field(
+        default_factory=lambda: [
+            "generated", "migrations", "__generated__", ".cache",
+            ".next", ".nuxt", "out",
+        ]
+    )
+
+
+@dataclass
 class AppSettings:
     files: FilesSettings = field(default_factory=FilesSettings)
     tree_sitter: TreeSitterSettings = field(default_factory=TreeSitterSettings)
+    metrics: MetricsSettings = field(default_factory=MetricsSettings)
     # Optional pre-computed PR cache: {bundle_stem -> {total_pr, reviewed_pr, url}}
     pr_cache: Dict[str, dict] = field(default_factory=dict)
 
@@ -74,6 +91,23 @@ def _parse_str_set_dict(raw) -> Optional[Dict[str, Set[str]]]:
         if isinstance(v, list):
             parsed[key] = {str(item).strip() for item in v if str(item).strip()}
     return parsed
+
+
+def _validate_metrics_config(metrics: MetricsSettings) -> None:
+    overlap = set(metrics.autogen_dirs) & set(metrics.scc_exclude_dirs)
+    if overlap:
+        logger.warning(
+            "Config error: autogen_dirs and scc_exclude_dirs share entries %s — "
+            "these dirs are excluded from logical_loc and CANNOT contribute to autogen_loc.",
+            sorted(overlap),
+        )
+    missing = set(metrics.dep_dirs) - set(metrics.scc_exclude_dirs)
+    if missing:
+        logger.warning(
+            "Config error: dep_dirs entries %s are absent from scc_exclude_dirs — "
+            "dependency code will be double-counted in logical_loc.",
+            sorted(missing),
+        )
 
 
 def load_app_settings(config_file: Optional[Path]) -> AppSettings:
@@ -134,9 +168,21 @@ def load_app_settings(config_file: Optional[Path]) -> AppSettings:
             f"lang_func_node_types must be specified in [tree_sitter] section of TOML ({cfg_path})."
         )
 
+    metrics_data = data.get("metrics", {}) if isinstance(data, dict) else {}
+    metrics_settings = MetricsSettings()
+    if isinstance(metrics_data.get("dep_dirs"), list):
+        metrics_settings.dep_dirs = [str(x) for x in metrics_data["dep_dirs"] if str(x).strip()]
+    if isinstance(metrics_data.get("scc_exclude_dirs"), list):
+        metrics_settings.scc_exclude_dirs = [str(x) for x in metrics_data["scc_exclude_dirs"] if str(x).strip()]
+    if isinstance(metrics_data.get("autogen_dirs"), list):
+        metrics_settings.autogen_dirs = [str(x) for x in metrics_data["autogen_dirs"] if str(x).strip()]
+
+    _validate_metrics_config(metrics_settings)
+
     return AppSettings(
         files=files_settings,
         tree_sitter=tree_sitter_settings,
+        metrics=metrics_settings,
     )
 
 

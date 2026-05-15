@@ -12,7 +12,7 @@ from .docs import (
 from .files import LangDistributionMetric, PrimaryLanguageMetric, SourceFilesMetric
 from .git import CommitCountMetric, ContributorsMetric, ReviewedPRMetric, TotalPRMetric
 from .infra import CIChecksMetric, ContainerizedMetric, DeploymentMetric, MonitoringMetric
-from .loc import AutoGenLocMetric, LogicalLocMetric, RawLocMetric
+from .loc import AutoGenLocMetric, DepDirLocMetric, LogicalLocMetric, RawLocMetric
 from .quality import DuplicationMetric, ForkPctMetric
 from .testing import TestSuiteMetric
 
@@ -25,6 +25,7 @@ __all__ = [
     "RawLocMetric",
     "LogicalLocMetric",
     "AutoGenLocMetric",
+    "DepDirLocMetric",
     "DuplicationMetric",
     "ForkPctMetric",
     "SourceFilesMetric",
