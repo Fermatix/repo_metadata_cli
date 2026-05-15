@@ -26,6 +26,12 @@ dependencies = [
 [project.scripts]
 repo-metadata = "repo_metadata_cli.cli:app"
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

@@ -53,12 +53,13 @@ class RepoContext:
 
     @property
     def scc_stats_no_deps(self) -> dict:
-        """scc stats excluding node_modules/, vendor/, dist/, build/ — used for Logical LOC (G)."""
+        """scc stats excluding dependency/build dirs — used for Logical LOC (G)."""
         from .metric_utils import get_scc_stats  # late import to avoid circularity
         ext_map = dict(self.settings.tree_sitter.extension_language_map)
+        exclude_dirs = list(self.settings.metrics.scc_exclude_dirs)
         return self._cached(
             "scc_stats_no_deps",
-            lambda: get_scc_stats(self.repo_path, ext_map, exclude_dep_dirs=True),
+            lambda: get_scc_stats(self.repo_path, ext_map, exclude_dirs=exclude_dirs),
         )
 
     @property

@@ -128,6 +128,15 @@ def _check_format(df: pd.DataFrame) -> List[CheckResult]:
             val = df.loc[df["dataset_name"] == name, col_name].values[0]
             r.add(name, f"{col_name}={val}")
 
+    # dep_dir_loc (AE) — optional column, present only when dep dirs are committed to git
+    if "dep_dir_loc" in df.columns:
+        r = col("dep_dir_loc_ge0", "dep_dir_loc (AE) >= 0")
+        numeric = pd.to_numeric(df["dep_dir_loc"], errors="coerce")
+        bad = df[numeric.isna() | (numeric < 0)]
+        for name in bad["dataset_name"]:
+            val = df.loc[df["dataset_name"] == name, "dep_dir_loc"].values[0]
+            r.add(name, f"dep_dir_loc={val}")
+
     # Float [0,1] columns
     for col_name, label in [
         ("duplication_ratio", "I"), ("fork_pct", "J"),
@@ -238,6 +247,15 @@ def _check_invariants(df: pd.DataFrame) -> Tuple[List[CheckResult], List[CheckRe
     ]
     for _, row in bad.iterrows():
         r.add(row["dataset_name"], f"reviewed_pr={row['reviewed_pr_count']}, total_pr={row['total_pr_count']}")
+
+    # AE <= F: dep_dir_loc cannot exceed raw_loc
+    if "dep_dir_loc" in df.columns:
+        r = err("dep_dir_le_raw", "dep_dir_loc (AE) <= raw_loc (F)")
+        raw = pd.to_numeric(df["raw_loc"], errors="coerce")
+        dep = pd.to_numeric(df["dep_dir_loc"], errors="coerce")
+        bad = df[dep > raw]
+        for _, row in bad.iterrows():
+            r.add(row["dataset_name"], f"dep_dir_loc={row['dep_dir_loc']}, raw_loc={row['raw_loc']}")
 
     # F == G warning (no blanks/comments — spec says "likely incorrect")
     r = warn("F_eq_G", "raw_loc == logical_loc with raw_loc > 0 (spec: 'likely incorrect')")
