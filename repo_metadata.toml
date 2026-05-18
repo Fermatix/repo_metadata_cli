@@ -426,8 +426,10 @@ dep_dirs = [
     # CMake ExternalProject / FetchContent / vcpkg
     "external",
     "vcpkg_installed",
-    # .NET — NuGet (old packages/ convention)
-    "packages",
+    # .NET — NuGet (old packages/ convention). NOTE: do NOT use as default —
+    # in JS/TS monorepos (Turborepo, Nx, Lerna) packages/ is own workspace source code.
+    # Add manually per-project if the repo uses NuGet with committed packages/.
+    # "packages",
     # R — renv library (sometimes committed)
     "renv",
     # Elm — compiler-downloaded packages (occasionally committed)
@@ -466,7 +468,7 @@ scc_exclude_dirs = [
     "thirdparty",
     "external",
     "vcpkg_installed",
-    "packages",
+    # "packages",  — see dep_dirs note; omitted to avoid excluding JS monorepo workspace packages
     "renv",
     "elm-stuff",
     "haxe_libraries",
