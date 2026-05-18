@@ -434,9 +434,8 @@ dep_dirs = [
     "elm-stuff",
     # Haxe — Haxelib installed libraries
     "haxe_libraries",
-    # Crystal — Shards package manager (always committed to git)
-    "lib",
     # Android legacy / old Java projects — committed JAR/AAR files
+    # Note: do NOT add "lib/" here — it is source code in Flutter/Dart, Ruby, Python.
     "libs",
     # Python self-vendoring (pip, setuptools, etc. vendor their own deps)
     "_vendor",
@@ -471,7 +470,6 @@ scc_exclude_dirs = [
     "renv",
     "elm-stuff",
     "haxe_libraries",
-    "lib",
     "libs",
     "_vendor",
     "submodules",
