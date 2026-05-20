@@ -365,18 +365,28 @@ def get_auto_gen_loc(
     repo_dir: Path,
     extension_language_map: Optional[Dict[str, str]] = None,
     autogen_dirs: Optional[Set[str]] = None,
+    exclude_dirs: Optional[Set[str]] = None,
 ) -> int:
     """Count scc Code lines in auto-generated files (spec column H).
 
     Identifies auto-gen files by filename patterns, directory patterns, file
     header markers, and lock files.  Uses scc (same Code column as logical_loc)
     with a Python counter fallback when scc is unavailable.
+
     Pass `autogen_dirs` to override the default set of auto-generated directories.
+    Pass `exclude_dirs` (same set as scc_exclude_dirs) to restrict the scan to
+    the same file scope used for logical_loc — i.e. only files already counted
+    in column G are eligible for column H.  This matches the spec requirement:
+    "Only include files already counted in Logical LOC."
     """
     _dirs = autogen_dirs if autogen_dirs is not None else _AUTOGEN_DIRS
+    _excl = exclude_dirs or set()
     auto_gen: List[Path] = []
     for path in repo_dir.rglob("*"):
         if not path.is_file() or ".git" in path.parts:
+            continue
+        rel = path.relative_to(repo_dir)
+        if _excl and any(part in _excl for part in rel.parts):
             continue
         if _is_autogen_file(path, repo_dir, _dirs):
             auto_gen.append(path)
