@@ -150,21 +150,39 @@ def test_empty_dep_dirs_logical_equals_raw(synth_repo):
     assert dep == 0
 
 
-def test_validate_metrics_config_warns_on_overlap(caplog):
-    """_validate_metrics_config should log a warning when autogen_dirs ∩ scc_exclude_dirs ≠ ∅."""
-    import logging
-    from repo_metadata_cli.settings import MetricsSettings, _validate_metrics_config
+def test_autogen_loc_excludes_files_in_scc_exclude_dirs(tmp_path):
+    """Files inside scc_exclude_dirs must not contribute to autogen_loc even if
+    they match autogen patterns — spec says 'only include files already counted
+    in Logical LOC'."""
+    from repo_metadata_cli.metric_utils import get_auto_gen_loc
 
-    bad = MetricsSettings(
-        dep_dirs=["vendor"],
-        scc_exclude_dirs=["vendor", "generated"],
-        autogen_dirs=["generated"],  # "generated" is also in scc_exclude_dirs
+    # vendor/migrations/0001.py matches autogen dir pattern "migrations"
+    # but vendor/ is in exclude_dirs → must be excluded
+    (tmp_path / "vendor" / "migrations").mkdir(parents=True)
+    (tmp_path / "vendor" / "migrations" / "0001.py").write_text(
+        "\n".join(f"x_{i} = {i}" for i in range(20))
     )
-    with caplog.at_level(logging.WARNING, logger="repo_metadata_cli.settings"):
-        _validate_metrics_config(bad)
+    # src/migrations/0002.py is in logical_loc scope → must be counted
+    (tmp_path / "src" / "migrations").mkdir(parents=True)
+    (tmp_path / "src" / "migrations" / "0002.py").write_text(
+        "\n".join(f"y_{i} = {i}" for i in range(10))
+    )
 
-    assert any("autogen_dirs" in msg and "scc_exclude_dirs" in msg for msg in caplog.messages), (
-        "Expected a warning about autogen_dirs ∩ scc_exclude_dirs overlap"
+    result_with_exclude = get_auto_gen_loc(
+        tmp_path,
+        autogen_dirs={"migrations"},
+        exclude_dirs={"vendor"},
+    )
+    result_without_exclude = get_auto_gen_loc(
+        tmp_path,
+        autogen_dirs={"migrations"},
+        exclude_dirs=None,
+    )
+
+    # With correct scoping: only src/migrations/0002.py counts (10 lines)
+    # Without scoping: both files count (30 lines) — this was the bug
+    assert result_with_exclude < result_without_exclude, (
+        "Scoping filter should reduce autogen_loc by excluding vendor/migrations/"
     )
 
 
@@ -190,10 +208,11 @@ def test_validate_metrics_config_no_warnings_for_valid_config(caplog):
     import logging
     from repo_metadata_cli.settings import MetricsSettings, _validate_metrics_config
 
+    # "out" appears in both autogen_dirs and scc_exclude_dirs — this is now valid
     good = MetricsSettings(
         dep_dirs=["vendor"],
-        scc_exclude_dirs=["vendor", "dist"],
-        autogen_dirs=["generated"],
+        scc_exclude_dirs=["vendor", "dist", "out"],
+        autogen_dirs=["generated", "out"],
     )
     with caplog.at_level(logging.WARNING, logger="repo_metadata_cli.settings"):
         _validate_metrics_config(good)

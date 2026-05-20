@@ -94,13 +94,9 @@ def _parse_str_set_dict(raw) -> Optional[Dict[str, Set[str]]]:
 
 
 def _validate_metrics_config(metrics: MetricsSettings) -> None:
-    overlap = set(metrics.autogen_dirs) & set(metrics.scc_exclude_dirs)
-    if overlap:
-        logger.warning(
-            "Config error: autogen_dirs and scc_exclude_dirs share entries %s — "
-            "these dirs are excluded from logical_loc and CANNOT contribute to autogen_loc.",
-            sorted(overlap),
-        )
+    # Dirs in both autogen_dirs and scc_exclude_dirs are valid: they are listed
+    # as autogen patterns per spec but contribute 0 to autogen_loc because the
+    # scoping filter restricts the autogen scan to the logical_loc file set.
     missing = set(metrics.dep_dirs) - set(metrics.scc_exclude_dirs)
     if missing:
         logger.warning(

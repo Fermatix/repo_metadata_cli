@@ -545,9 +545,11 @@ scc_exclude_dirs = [
     ".docusaurus",
 ]
 
-# Directories treated as auto-generated code WITHIN Logical LOC scope.
-# Rule: these dirs must NOT appear in scc_exclude_dirs — they are counted in
-# Logical LOC and then reported separately as Auto-Generated LOC (column H).
+# Directories treated as auto-generated code (spec column H).
+# Files in these dirs are eligible for autogen_loc only if they also fall within
+# the logical_loc scope (i.e. not in scc_exclude_dirs). Dirs that appear in
+# both lists (e.g. "out") are scanned for autogen patterns but contribute 0
+# because the scoping filter excludes them from logical_loc first.
 autogen_dirs = [
     # Generic code-generation output
     "generated",
@@ -568,7 +570,9 @@ autogen_dirs = [
     # Mock generation (Go mockery, Java Mockito generated sources, etc.)
     "mock",
     "mocks",
-    # Frontend framework caches included in Logical LOC, counted as auto-gen
+    # Build output — in scc_exclude_dirs so contributes 0, but listed per spec (column H)
+    "out",
+    # Frontend framework build/cache dirs
     ".cache",
     ".next",
     ".nuxt",
