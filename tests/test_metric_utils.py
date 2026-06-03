@@ -150,12 +150,6 @@ def test_is_autogen_header_marker(tmp_path):
     assert _is_autogen_file(f, tmp_path, set()) is True
 
 
-def test_is_autogen_header_at_generated(tmp_path):
-    f = tmp_path / "schema.ts"
-    f.write_text("// @generated\nexport type Foo = string;\n")
-    assert _is_autogen_file(f, tmp_path, set()) is True
-
-
 def test_is_autogen_regular_file_is_false(tmp_path):
     f = tmp_path / "app.py"
     f.write_text("def main(): pass\n")

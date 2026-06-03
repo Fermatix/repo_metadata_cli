@@ -137,6 +137,22 @@ def test_loc_invariant_chain(synth_repo):
     assert dep >= 0, f"dep_dir_loc must be non-negative, got {dep}"
 
 
+def test_autogen_loc_le_logical_loc_without_cap(synth_repo):
+    """autogen_loc <= logical_loc must hold through scoping alone, not via min() cap.
+
+    autogen files are a strict subset of logical_loc files (same scc_exclude_dirs
+    filter applied), so the invariant must be satisfied by the computation itself.
+    """
+    settings = _make_settings()
+    ctx = _build_ctx(synth_repo, settings)
+    logical = LogicalLocMetric().compute(ctx)
+    autogen = AutoGenLocMetric().compute(ctx)
+    assert autogen <= logical, (
+        f"autogen_loc ({autogen}) > logical_loc ({logical}): scoping is broken — "
+        "autogen files are not a subset of logical_loc files"
+    )
+
+
 def test_empty_dep_dirs_logical_equals_raw(synth_repo):
     """When no dirs are excluded, logical_loc should match raw_loc code lines."""
     settings = _make_settings(dep_dirs=(), scc_exclude=(), autogen=())
