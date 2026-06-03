@@ -8,7 +8,9 @@ from ..base_metric import BaseMetric, RepoContext
 from ..metric_utils import (
     compute_avg_func_length,
     compute_docstring_ratio,
+    compute_readme_stats,
     detect_issue_tracker,
+    detect_license,
     detect_readme_quality,
 )
 
@@ -61,3 +63,23 @@ class AvgFuncLengthMetric(BaseMetric):
 
     def compute(self, ctx: RepoContext) -> Any:
         return round(compute_avg_func_length(ctx.repo_path, ctx.allowed_files, ctx.tree_sitter), 2)
+
+
+class DocumentationCountMetric(BaseMetric):
+    """AN: Total number of lines across README* files in the repo root (ported from v1)."""
+
+    column = "AN"
+    field_name = "documentation_cnt"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return compute_readme_stats(ctx.repo_path)
+
+
+class LicenseTypeMetric(BaseMetric):
+    """AG: Detected license type (MIT/APACHE-2.0/GPL/… or UNKNOWN), ported from v1."""
+
+    column = "AG"
+    field_name = "detected_license"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return detect_license(ctx.repo_path)

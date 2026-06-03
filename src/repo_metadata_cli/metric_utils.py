@@ -8,7 +8,7 @@ import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, cast
 
 from .allowed_files import AllowedFiles
 from .tree_sitter_support import TreeSitterManager
@@ -94,193 +94,20 @@ def _parse_scc_output(out: str) -> dict:
     return {"languages": languages, "total": total}
 
 
-# ---------------------------------------------------------------------------
-# Python LOC fallback (used when scc is not installed)
-# ---------------------------------------------------------------------------
-
-# Single-line comment prefixes per tree-sitter language name
-_COMMENT_PREFIXES: Dict[str, List[str]] = {
-    "python": ["#"],
-    "javascript": ["//"],
-    "typescript": ["//"],
-    "tsx": ["//"],
-    "jsx": ["//"],
-    "go": ["//"],
-    "java": ["//"],
-    "kotlin": ["//"],
-    "scala": ["//"],
-    "rust": ["//"],
-    "c": ["//"],
-    "cpp": ["//"],
-    "csharp": ["//"],
-    "ruby": ["#"],
-    "bash": ["#"],
-    "shell": ["#"],
-    "php": ["//", "#"],
-    "swift": ["//"],
-    "haskell": ["--"],
-    "ocaml": [],
-    "ocaml_interface": [],
-    "julia": ["#"],
-    "lua": ["--"],
-    "r": ["#"],
-    "css": [],
-    "html": [],
-    "json": [],
-    "toml": ["#"],
-    "yaml": ["#"],
-    "verilog": ["//"],
-    "agda": ["--"],
-    "jsdoc": [],
-}
-
-# Display names matching scc output capitalization
-_LANG_DISPLAY_NAMES: Dict[str, str] = {
-    "python": "Python",
-    "javascript": "JavaScript",
-    "typescript": "TypeScript",
-    "tsx": "TSX",
-    "jsx": "JSX",
-    "go": "Go",
-    "java": "Java",
-    "kotlin": "Kotlin",
-    "scala": "Scala",
-    "rust": "Rust",
-    "c": "C",
-    "cpp": "C++",
-    "csharp": "C#",
-    "ruby": "Ruby",
-    "bash": "Bash",
-    "shell": "Shell",
-    "php": "PHP",
-    "swift": "Swift",
-    "haskell": "Haskell",
-    "ocaml": "OCaml",
-    "ocaml_interface": "OCaml",
-    "julia": "Julia",
-    "lua": "Lua",
-    "r": "R",
-    "css": "CSS",
-    "html": "HTML",
-    "json": "JSON",
-    "toml": "TOML",
-    "yaml": "YAML",
-    "verilog": "Verilog",
-    "agda": "Agda",
-    "jsdoc": "JSDoc",
-}
-
-
-def _python_loc_fallback(repo_dir: Path, extension_language_map: Dict[str, str]) -> dict:
-    """Count LOC using Python when scc is not available.
-
-    Uses git ls-files for the file list so only tracked files are counted.
-    Comment detection uses single-line prefix heuristics per language.
-    Multi-line block comments (/* ... */) are counted as code lines — acceptable
-    for a fallback.
-    """
-    try:
-        out = run_cmd(["git", "ls-files"], cwd=repo_dir)
-    except Exception:
-        return _parse_scc_output("")
-
-    if not out:
-        return _parse_scc_output("")
-
-    lang_stats: Dict[str, Dict[str, int]] = {}
-
-    for rel_path_str in out.splitlines():
-        rel_path_str = rel_path_str.strip()
-        if not rel_path_str:
-            continue
-        path = repo_dir / rel_path_str
-        if not path.is_file():
-            continue
-
-        suffix = path.suffix.lower()
-        lang = extension_language_map.get(suffix)
-        if not lang:
-            continue
-
-        try:
-            content = path.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            continue
-
-        lines = content.splitlines()
-        total = len(lines)
-        if total == 0:
-            continue
-
-        blank_count = sum(1 for line in lines if not line.strip())
-
-        comment_prefixes = _COMMENT_PREFIXES.get(lang.lower(), [])
-        comment_count = 0
-        if comment_prefixes:
-            for line in lines:
-                stripped = line.strip()
-                if stripped and any(stripped.startswith(p) for p in comment_prefixes):
-                    comment_count += 1
-
-        code_count = max(0, total - blank_count - comment_count)
-
-        display_name = _LANG_DISPLAY_NAMES.get(lang.lower(), lang.capitalize())
-        if display_name not in lang_stats:
-            lang_stats[display_name] = {"lines": 0, "code": 0, "comment": 0, "blank": 0, "files": 0}
-        lang_stats[display_name]["lines"] += total
-        lang_stats[display_name]["code"] += code_count
-        lang_stats[display_name]["comment"] += comment_count
-        lang_stats[display_name]["blank"] += blank_count
-        lang_stats[display_name]["files"] += 1
-
-    languages = [
-        {
-            "name": name,
-            "lines": s["lines"],
-            "code": s["code"],
-            "comment": s["comment"],
-            "blank": s["blank"],
-            "files": s["files"],
-        }
-        for name, s in lang_stats.items()
-    ]
-
-    total_stats: Dict[str, int] = {
-        "lines": sum(s["lines"] for s in lang_stats.values()),
-        "code": sum(s["code"] for s in lang_stats.values()),
-        "comment": sum(s["comment"] for s in lang_stats.values()),
-        "blank": sum(s["blank"] for s in lang_stats.values()),
-        "files": sum(s["files"] for s in lang_stats.values()),
-    }
-
-    return {"languages": languages, "total": total_stats}
-
-
 def get_scc_stats(
     repo_dir: Path,
-    extension_language_map: Optional[Dict[str, str]] = None,
     exclude_dirs: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Run `scc --format json` and return parsed language statistics.
 
-    Falls back to a Python-based line counter when scc is not installed.
-    The fallback uses git ls-files and single-line comment heuristics.
     Pass `exclude_dirs` to skip dependency/build directories (Logical LOC mode).
+    Returns empty stats if scc is not installed.
     """
     cmd = ["scc", "--format", "json", "--no-complexity"]
     if exclude_dirs:
         cmd += ["--exclude-dir", ",".join(exclude_dirs)]
     cmd.append(str(repo_dir))
-    out = run_cmd(cmd)
-    if out:
-        return _parse_scc_output(out)
-
-    logger.info(
-        "scc not available for %s; using Python LOC fallback. "
-        "Install scc for more accurate results: brew install scc",
-        repo_dir.name,
-    )
-    return _python_loc_fallback(repo_dir, extension_language_map or {})
+    return _parse_scc_output(run_cmd(cmd) or "")
 
 
 # ---------------------------------------------------------------------------
@@ -290,7 +117,7 @@ def get_scc_stats(
 _DEP_DIR_NAMES: Set[str] = {"vendor", "node_modules", "bower_components"}
 
 _AUTOGEN_DIRS: Set[str] = {
-    "generated", "migrations", "__generated__", ".cache",
+    "generated", "migrations", "__generated__",
     ".next", ".nuxt", "out",
 }
 
@@ -305,16 +132,11 @@ _AUTOGEN_NAME_RE: List[re.Pattern] = [
 
 _AUTOGEN_EXACT_NAMES: Set[str] = {
     "package-lock.json", "yarn.lock", "cargo.lock", "go.sum",
-    "poetry.lock", "pipfile.lock", "composer.lock", "gemfile.lock",
-    "pnpm-lock.yaml", "bun.lockb",
 }
 
 _AUTOGEN_HEADER_MARKERS: List[str] = [
     "code generated by",
     "do not edit",
-    "@generated",
-    "auto-generated",
-    "autogenerated",
 ]
 
 
@@ -339,73 +161,98 @@ def _is_autogen_file(file_path: Path, repo_root: Path, autogen_dirs: Set[str]) -
     return False
 
 
-def _scc_code_for_files(files: List[Path]) -> int:
-    """Run scc on a list of specific files and return total Code lines.
+def _parse_scc_by_file_output(out: str) -> List[Dict[str, Any]]:
+    """Parse `scc --format json --by-file` output into [{path, code}] list."""
+    try:
+        data = json.loads(out)
+    except json.JSONDecodeError:
+        start, end = out.find("["), out.rfind("]")
+        if start == -1 or end == -1:
+            return []
+        try:
+            data = json.loads(out[start : end + 1])
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(data, list):
+        return []
+    result: List[Dict[str, Any]] = []
+    for item in cast(List[Any], data):
+        if not isinstance(item, dict):
+            continue
+        lang_entry = cast(Dict[str, Any], item)
+        files_raw = lang_entry.get("Files")
+        if not isinstance(files_raw, list):
+            continue
+        for fitem in cast(List[Any], files_raw):
+            if not isinstance(fitem, dict):
+                continue
+            file_entry = cast(Dict[str, Any], fitem)
+            location = str(file_entry.get("Location") or "")
+            code = int(file_entry.get("Code") or 0)
+            if location:
+                result.append({"path": Path(location), "code": code})
+    return result
 
-    Files are passed in batches to avoid ARG_MAX limits.
-    Returns 0 if scc is not available.
+
+def get_scc_file_stats(
+    repo_dir: Path,
+    exclude_dirs: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """Run `scc --format json --by-file` and return [{path, code}] per file.
+
+    Uses the same --exclude-dir list as logical_loc so the returned file set
+    is identical to what scc counts for column G.  Returns [] if scc is
+    unavailable.
     """
-    if not files:
-        return 0
+    cmd = ["scc", "--format", "json", "--by-file", "--no-complexity"]
+    if exclude_dirs:
+        cmd += ["--exclude-dir", ",".join(exclude_dirs)]
+    cmd.append(str(repo_dir))
+    out = run_cmd(cmd)
+    if not out:
+        return []
+    return _parse_scc_by_file_output(out)
+
+
+def count_chars_in_files(file_stats: List[Dict[str, Any]]) -> int:
+    """Sum of Unicode character counts across the given scc file set.
+
+    `file_stats` is the output of `get_scc_file_stats` (each entry has a `path`).
+    Files are read with errors='ignore'; unreadable files are skipped.  Used by
+    symbols_count, which must cover exactly the logical_loc file set.
+    """
     total = 0
-    batch_size = 400
-    for i in range(0, len(files), batch_size):
-        batch = files[i : i + batch_size]
-        out = run_cmd(
-            ["scc", "--format", "json", "--no-complexity"] + [str(p) for p in batch],
-            timeout=120,
-        )
-        if out:
-            stats: Dict[str, Any] = _parse_scc_output(out)
-            total += int(stats["total"]["code"])
+    for entry in file_stats:
+        path = Path(entry["path"])
+        try:
+            total += len(path.read_text(encoding="utf-8", errors="ignore"))
+        except OSError:
+            continue
     return total
 
 
 def get_auto_gen_loc(
     repo_dir: Path,
-    extension_language_map: Optional[Dict[str, str]] = None,
     autogen_dirs: Optional[Set[str]] = None,
+    exclude_dirs: Optional[Set[str]] = None,
 ) -> int:
     """Count scc Code lines in auto-generated files (spec column H).
 
-    Identifies auto-gen files by filename patterns, directory patterns, file
-    header markers, and lock files.  Uses scc (same Code column as logical_loc)
-    with a Python counter fallback when scc is unavailable.
-    Pass `autogen_dirs` to override the default set of auto-generated directories.
+    Uses `scc --by-file --exclude-dir` with the same exclusion list as
+    logical_loc, so the candidate file set is identical to column G by
+    construction.  Autogen detection (directory patterns, filename patterns,
+    header markers) is applied to that file set, and the Code values already
+    provided by scc are summed — no second scc invocation needed.
+    Returns 0 if scc is not installed.
     """
     _dirs = autogen_dirs if autogen_dirs is not None else _AUTOGEN_DIRS
-    auto_gen: List[Path] = []
-    for path in repo_dir.rglob("*"):
-        if not path.is_file() or ".git" in path.parts:
-            continue
-        if _is_autogen_file(path, repo_dir, _dirs):
-            auto_gen.append(path)
-    if not auto_gen:
-        return 0
-
-    # Primary: scc (matches the Code column methodology used for logical_loc)
-    total_code = _scc_code_for_files(auto_gen)
-    if total_code > 0:
-        return total_code
-
-    # Fallback: Python counter (when scc is not installed)
-    ext_map = extension_language_map or {}
-    total_code = 0
-    for path in auto_gen:
-        try:
-            content = path.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            continue
-        lang = ext_map.get(path.suffix.lower(), "")
-        comment_prefixes = _COMMENT_PREFIXES.get(lang.lower(), [])
-        for line in content.splitlines():
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if comment_prefixes and any(stripped.startswith(p) for p in comment_prefixes):
-                continue
-            total_code += 1
-    return total_code
+    _excl_list = list(exclude_dirs) if exclude_dirs else []
+    file_stats = get_scc_file_stats(repo_dir, exclude_dirs=_excl_list)
+    return sum(
+        entry["code"]
+        for entry in file_stats
+        if _is_autogen_file(entry["path"], repo_dir, _dirs)
+    )
 
 
 def get_dep_dir_loc(repo_dir: Path, dep_dir_names: Optional[Set[str]] = None) -> int:
@@ -869,6 +716,101 @@ def detect_readme_quality(repo_dir: Path) -> str:
     if len(content.strip()) > 200:
         return "Basic"
     return "None"
+
+
+def compute_readme_stats(repo_dir: Path) -> int:
+    """documentation_cnt: total number of lines across README* files in the repo root."""
+    total_lines = 0
+    for p in repo_dir.iterdir():
+        if p.is_file() and p.name.lower().startswith("readme"):
+            try:
+                text = p.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            total_lines += len(text.splitlines())
+    return total_lines
+
+
+# ---------------------------------------------------------------------------
+# License detection
+# ---------------------------------------------------------------------------
+
+def detect_license(repo_dir: Path) -> str:
+    """Naive license detector based on LICENSE*/COPYING* files in the repository root.
+
+    Returns one of: MIT, APACHE-2.0, GPL-3.0, GPL, BSD, MPL-2.0, UNLICENSE, UNKNOWN.
+    """
+    candidates: List[Path] = []
+    for p in repo_dir.iterdir():
+        if not p.is_file():
+            continue
+        upper = p.name.upper()
+        if upper.startswith("LICENSE") or upper.startswith("COPYING") or "LICENSE" in upper:
+            candidates.append(p)
+
+    if not candidates:
+        return "UNKNOWN"
+
+    candidates = sorted(candidates, key=lambda x: len(x.name))
+    target = candidates[0]
+
+    try:
+        text = target.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return "UNKNOWN"
+
+    head = text[:5000]
+
+    def has(*subs: str) -> bool:
+        low = head.lower()
+        return all(s.lower() in low for s in subs)
+
+    if has("mit license", "permission is hereby granted"):
+        return "MIT"
+    if has("apache license", "version 2.0"):
+        return "APACHE-2.0"
+    if has("gnu general public license", "version 3"):
+        return "GPL-3.0"
+    if has("gnu general public license"):
+        return "GPL"
+    if has("bsd license") or "redistribution and use in source and binary forms" in head.lower():
+        return "BSD"
+    if has("mozilla public license", "version 2.0"):
+        return "MPL-2.0"
+    if "the unlicense" in head.lower():
+        return "UNLICENSE"
+
+    name_upper = target.name.upper()
+    if "MIT" in name_upper:
+        return "MIT"
+    if "APACHE" in name_upper:
+        return "APACHE-2.0"
+    if "GPL" in name_upper:
+        return "GPL"
+    if "BSD" in name_upper:
+        return "BSD"
+    if "MPL" in name_upper:
+        return "MPL-2.0"
+
+    return "UNKNOWN"
+
+
+# ---------------------------------------------------------------------------
+# Repository size (disk usage)
+# ---------------------------------------------------------------------------
+
+def _parse_du_kb(output: str) -> int:
+    """Parse the leading kilobyte count from `du -sk` output."""
+    try:
+        return int(output.split()[0])
+    except (IndexError, ValueError):
+        return 0
+
+
+def get_dir_size_mb(path: Path) -> float:
+    """Return the size of `path` in megabytes via `du -sk`, rounded to 3 decimals."""
+    kb = _parse_du_kb(run_cmd(["du", "-sk", str(path)]))
+    return round(kb / 1024, 3)
 
 
 # ---------------------------------------------------------------------------
