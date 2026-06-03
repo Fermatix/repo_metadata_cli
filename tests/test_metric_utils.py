@@ -12,7 +12,11 @@ import pytest
 
 from repo_metadata_cli.metric_utils import (
     _is_autogen_file,
+    _parse_du_kb,
     _parse_scc_output,
+    compute_readme_stats,
+    count_chars_in_files,
+    detect_license,
     get_dep_dir_loc,
 )
 
@@ -189,3 +193,102 @@ def test_dep_dir_loc_ignores_non_dep_dirs(tmp_path):
     (tmp_path / "src" / "main.py").write_text("x = 1\n")
     result = get_dep_dir_loc(tmp_path, {"vendor"})
     assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# detect_license (ported from v1)
+# ---------------------------------------------------------------------------
+
+def test_detect_license_unknown_when_absent(tmp_path):
+    assert detect_license(tmp_path) == "UNKNOWN"
+
+
+def test_detect_license_mit(tmp_path):
+    (tmp_path / "LICENSE").write_text(
+        "MIT License\n\nPermission is hereby granted, free of charge, to any person...\n"
+    )
+    assert detect_license(tmp_path) == "MIT"
+
+
+def test_detect_license_apache(tmp_path):
+    (tmp_path / "LICENSE").write_text("Apache License\nVersion 2.0, January 2004\n")
+    assert detect_license(tmp_path) == "APACHE-2.0"
+
+
+def test_detect_license_gpl3(tmp_path):
+    (tmp_path / "COPYING").write_text(
+        "GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n"
+    )
+    assert detect_license(tmp_path) == "GPL-3.0"
+
+
+def test_detect_license_falls_back_to_filename(tmp_path):
+    (tmp_path / "LICENSE-MIT").write_text("some unrecognized header text\n")
+    assert detect_license(tmp_path) == "MIT"
+
+
+# ---------------------------------------------------------------------------
+# compute_readme_stats (ported from v1)
+# ---------------------------------------------------------------------------
+
+def test_readme_stats_zero_when_absent(tmp_path):
+    assert compute_readme_stats(tmp_path) == 0
+
+
+def test_readme_stats_counts_lines(tmp_path):
+    (tmp_path / "README.md").write_text("line1\nline2\nline3\n")
+    assert compute_readme_stats(tmp_path) == 3
+
+
+def test_readme_stats_sums_multiple_readmes(tmp_path):
+    (tmp_path / "README.md").write_text("a\nb\n")
+    (tmp_path / "README.rst").write_text("c\n")
+    assert compute_readme_stats(tmp_path) == 3
+
+
+# ---------------------------------------------------------------------------
+# _parse_du_kb (ported from v1)
+# ---------------------------------------------------------------------------
+
+def test_parse_du_kb_normal():
+    assert _parse_du_kb("1234\t/some/path") == 1234
+
+
+def test_parse_du_kb_malformed_returns_zero():
+    assert _parse_du_kb("") == 0
+    assert _parse_du_kb("not-a-number\tpath") == 0
+
+
+# ---------------------------------------------------------------------------
+# count_chars_in_files (symbols_count)
+# ---------------------------------------------------------------------------
+
+def test_count_chars_in_files_empty():
+    assert count_chars_in_files([]) == 0
+
+
+def test_count_chars_in_files_ascii(tmp_path):
+    f = tmp_path / "a.py"
+    f.write_text("x = 1\n")  # 6 chars
+    assert count_chars_in_files([{"path": f, "code": 1}]) == 6
+
+
+def test_count_chars_in_files_counts_unicode_chars_not_bytes(tmp_path):
+    f = tmp_path / "u.py"
+    # "# комментарий\nx = 1\n" → 20 characters but 31 bytes in UTF-8
+    f.write_text("# комментарий\nx = 1\n", encoding="utf-8")
+    assert count_chars_in_files([{"path": f, "code": 1}]) == 20
+
+
+def test_count_chars_in_files_sums_multiple_and_skips_missing(tmp_path):
+    f1 = tmp_path / "a.py"
+    f1.write_text("ab\n")   # 3
+    f2 = tmp_path / "b.py"
+    f2.write_text("cde\n")  # 4
+    missing = tmp_path / "nope.py"
+    total = count_chars_in_files([
+        {"path": f1, "code": 1},
+        {"path": f2, "code": 1},
+        {"path": missing, "code": 0},
+    ])
+    assert total == 7

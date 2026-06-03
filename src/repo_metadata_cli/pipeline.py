@@ -17,32 +17,43 @@ from .base_metric import BaseMetric, RepoContext
 from .metrics import (  # metrics/ package — all metric classes via __init__.py
     AutoGenLocMetric,
     AvgFuncLengthMetric,
+    BranchCountMetric,
+    CommentRatioMetric,
     DepDirLocMetric,
     CIChecksMetric,
     CommitCountMetric,
     ContainerizedMetric,
     ContributorsMetric,
+    CreatedAtMetric,
     DatasetIdMetric,
     DatasetNameMetric,
     DeploymentMetric,
     DescriptionMetric,
     DocstringRatioMetric,
+    DocumentationCountMetric,
     DuplicationMetric,
+    ExtensionsMetric,
     ForkPctMetric,
+    GitHistoryMbMetric,
     HoldoutMetric,
     IssueTrackerMetric,
     LangDistributionMetric,
+    LicenseTypeMetric,
     LogicalLocMetric,
     MonitoringMetric,
     NumReposMetric,
     PrimaryLanguageMetric,
     RawLocMetric,
     ReadmeQualityMetric,
+    RepoBundleMbMetric,
     ReviewedPRMetric,
     SourceFilesMetric,
+    StackMetric,
+    SymbolsCountMetric,
     TestSuiteMetric,
     TotalPRMetric,
     VendorNameMetric,
+    WorktreeMbMetric,
 )
 from .settings import AppSettings
 from .tree_sitter_support import TreeSitterManager
@@ -50,7 +61,8 @@ from .utils import run_cmd
 
 logger = logging.getLogger(__name__)
 
-# Pipeline order matches Quote Form columns A → AA, then empty AB/AC/AD.
+# Pipeline order: Quote Form columns A → AA, AE, then v1-ported AF → AO,
+# and finally the empty pricing placeholders AB/AC/AD (appended last in run_pipeline).
 METRICS: list[Type[BaseMetric]] = [
     DatasetIdMetric,       # A
     VendorNameMetric,      # B
@@ -80,6 +92,18 @@ METRICS: list[Type[BaseMetric]] = [
     IssueTrackerMetric,    # Z
     AvgFuncLengthMetric,   # AA
     DepDirLocMetric,       # AE (optional)
+    # v1-ported metrics (AF → AO), kept before the pricing placeholders.
+    CreatedAtMetric,         # AF
+    LicenseTypeMetric,       # AG
+    BranchCountMetric,       # AH
+    RepoBundleMbMetric,      # AI
+    GitHistoryMbMetric,      # AJ
+    WorktreeMbMetric,        # AK
+    ExtensionsMetric,        # AL
+    StackMetric,             # AM
+    DocumentationCountMetric,# AN
+    CommentRatioMetric,      # AO
+    SymbolsCountMetric,      # AP
 ]
 
 # Empty placeholder columns per spec.
@@ -226,9 +250,9 @@ def _processed_repos(csv_path: Path) -> Set[str]:
     except Exception as exc:
         logger.warning("Could not read %s (%s); recomputing all.", csv_path, exc)
         return set()
-    if df.empty or "dataset_name" not in df.columns:
+    if df.empty or "repo_name" not in df.columns:
         return set()
-    processed = set(df["dataset_name"].astype(str))
+    processed = set(df["repo_name"].astype(str))
     logger.info("%s already contains %d repositories.", csv_path, len(processed))
     return processed
 

@@ -1,4 +1,4 @@
-"""Columns N, O, P, Q — commit count, contributors, PR counts."""
+"""Columns N, O, P, Q — commit count, contributors_count, PR counts."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ class ContributorsMetric(BaseMetric):
     """O: Unique human authors (bots excluded), deduplicated by git shortlog."""
 
     column = "O"
-    field_name = "contributors"
+    field_name = "contributors_count"
 
     def compute(self, ctx: RepoContext) -> Any:
         out = run_cmd(["git", "shortlog", "-sn", "--no-merges", "--all"], cwd=ctx.repo_path)
@@ -87,3 +87,27 @@ class ReviewedPRMetric(BaseMetric):
         if entry is not None:
             return entry.get("reviewed_pr", 0)
         return 0
+
+
+class BranchCountMetric(BaseMetric):
+    """AH: Total number of local and remote branches (ported from v1)."""
+
+    column = "AH"
+    field_name = "branch_count"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        out = run_cmd(["git", "branch", "-a"], cwd=ctx.repo_path)
+        return len([line for line in out.splitlines() if line.strip()])
+
+
+class CreatedAtMetric(BaseMetric):
+    """AF: Repository creation timestamp — date of the first commit (ported from v1)."""
+
+    column = "AF"
+    field_name = "created_at"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return run_cmd(
+            ["git", "log", "HEAD", "--reverse", "--format=%ai", "--max-count=1"],
+            cwd=ctx.repo_path,
+        )

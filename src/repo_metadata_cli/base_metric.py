@@ -34,7 +34,7 @@ class RepoContext:
         return self.repo_path.name
 
     @property
-    def vendor_name(self) -> str:
+    def partner_name(self) -> str:
         if self.bundle_path is not None:
             return self.bundle_path.parent.name
         return self.repo_path.parent.name

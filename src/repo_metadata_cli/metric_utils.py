@@ -214,6 +214,23 @@ def get_scc_file_stats(
     return _parse_scc_by_file_output(out)
 
 
+def count_chars_in_files(file_stats: List[Dict[str, Any]]) -> int:
+    """Sum of Unicode character counts across the given scc file set.
+
+    `file_stats` is the output of `get_scc_file_stats` (each entry has a `path`).
+    Files are read with errors='ignore'; unreadable files are skipped.  Used by
+    symbols_count, which must cover exactly the logical_loc file set.
+    """
+    total = 0
+    for entry in file_stats:
+        path = Path(entry["path"])
+        try:
+            total += len(path.read_text(encoding="utf-8", errors="ignore"))
+        except OSError:
+            continue
+    return total
+
+
 def get_auto_gen_loc(
     repo_dir: Path,
     autogen_dirs: Optional[Set[str]] = None,
@@ -699,6 +716,101 @@ def detect_readme_quality(repo_dir: Path) -> str:
     if len(content.strip()) > 200:
         return "Basic"
     return "None"
+
+
+def compute_readme_stats(repo_dir: Path) -> int:
+    """documentation_cnt: total number of lines across README* files in the repo root."""
+    total_lines = 0
+    for p in repo_dir.iterdir():
+        if p.is_file() and p.name.lower().startswith("readme"):
+            try:
+                text = p.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            total_lines += len(text.splitlines())
+    return total_lines
+
+
+# ---------------------------------------------------------------------------
+# License detection
+# ---------------------------------------------------------------------------
+
+def detect_license(repo_dir: Path) -> str:
+    """Naive license detector based on LICENSE*/COPYING* files in the repository root.
+
+    Returns one of: MIT, APACHE-2.0, GPL-3.0, GPL, BSD, MPL-2.0, UNLICENSE, UNKNOWN.
+    """
+    candidates: List[Path] = []
+    for p in repo_dir.iterdir():
+        if not p.is_file():
+            continue
+        upper = p.name.upper()
+        if upper.startswith("LICENSE") or upper.startswith("COPYING") or "LICENSE" in upper:
+            candidates.append(p)
+
+    if not candidates:
+        return "UNKNOWN"
+
+    candidates = sorted(candidates, key=lambda x: len(x.name))
+    target = candidates[0]
+
+    try:
+        text = target.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return "UNKNOWN"
+
+    head = text[:5000]
+
+    def has(*subs: str) -> bool:
+        low = head.lower()
+        return all(s.lower() in low for s in subs)
+
+    if has("mit license", "permission is hereby granted"):
+        return "MIT"
+    if has("apache license", "version 2.0"):
+        return "APACHE-2.0"
+    if has("gnu general public license", "version 3"):
+        return "GPL-3.0"
+    if has("gnu general public license"):
+        return "GPL"
+    if has("bsd license") or "redistribution and use in source and binary forms" in head.lower():
+        return "BSD"
+    if has("mozilla public license", "version 2.0"):
+        return "MPL-2.0"
+    if "the unlicense" in head.lower():
+        return "UNLICENSE"
+
+    name_upper = target.name.upper()
+    if "MIT" in name_upper:
+        return "MIT"
+    if "APACHE" in name_upper:
+        return "APACHE-2.0"
+    if "GPL" in name_upper:
+        return "GPL"
+    if "BSD" in name_upper:
+        return "BSD"
+    if "MPL" in name_upper:
+        return "MPL-2.0"
+
+    return "UNKNOWN"
+
+
+# ---------------------------------------------------------------------------
+# Repository size (disk usage)
+# ---------------------------------------------------------------------------
+
+def _parse_du_kb(output: str) -> int:
+    """Parse the leading kilobyte count from `du -sk` output."""
+    try:
+        return int(output.split()[0])
+    except (IndexError, ValueError):
+        return 0
+
+
+def get_dir_size_mb(path: Path) -> float:
+    """Return the size of `path` in megabytes via `du -sk`, rounded to 3 decimals."""
+    kb = _parse_du_kb(run_cmd(["du", "-sk", str(path)]))
+    return round(kb / 1024, 3)
 
 
 # ---------------------------------------------------------------------------
