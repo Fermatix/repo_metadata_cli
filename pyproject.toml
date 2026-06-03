@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "repo-metadata-cli"
 version = "0.1.0"
-description = "CLI utility to compute repository metadata for dataset curation."
+repo_description = "CLI utility to compute repository metadata for dataset curation."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Vladislav Savenkov" }]
@@ -21,6 +21,7 @@ dependencies = [
     "flask (>=3.1.2,<4.0.0)",
     "dpath (>=2.2.0,<3.0.0)",
     "tree-sitter-language-pack (>=0.13.0,<0.14.0)",
+    "pip>=26.0.1",
 ]
 
 [project.scripts]

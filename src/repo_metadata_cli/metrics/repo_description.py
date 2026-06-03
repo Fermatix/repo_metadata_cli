@@ -1,4 +1,4 @@
-"""Column D — LLM-generated repository description via OpenRouter API."""
+"""Column D — LLM-generated repository repo_description via OpenRouter API."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ _SYSTEM_PROMPT = (
     "Do NOT include any personally identifiable information (PII): no person names, emails, usernames, phone numbers, URLs, or domain names. "
     "Do NOT reproduce any string that looks like a secret, token, key, or credential. "
     "Describe only the technical purpose and architecture in generic terms (e.g. 'a REST API', 'a React frontend', 'a data-processing pipeline'). "
-    "If you are unsure whether a term is a proper noun or PII, omit it and use a generic description instead."
+    "If you are unsure whether a term is a proper noun or PII, omit it and use a generic repo_description instead."
 )
 
 _USER_TEMPLATE = """\
@@ -106,12 +106,12 @@ def _call_openrouter(api_key: str, user_content: str) -> str:
 
 class DescriptionMetric(BaseMetric):
     column = "D"
-    field_name = "description"
+    field_name = "repo_description"
 
     def compute(self, ctx: RepoContext) -> Any:
         api_key = os.environ.get("OPENROUTER_API_KEY", "")
         if not api_key:
-            logger.debug("OPENROUTER_API_KEY not set; skipping description generation.")
+            logger.debug("OPENROUTER_API_KEY not set; skipping repo_description generation.")
             return ""
         user_content = _build_context(ctx)
         return _call_openrouter(api_key, user_content)

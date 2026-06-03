@@ -1,19 +1,42 @@
-"""All metric classes in pipeline order (A → AA, then empty AB/AC/AD)."""
+"""All metric classes in pipeline order (A → AA, AE, then v1-ported AF → AO)."""
 
 from .basic import DatasetIdMetric, DatasetNameMetric, NumReposMetric, VendorNameMetric
-from .description import DescriptionMetric
+from .repo_description import DescriptionMetric
 from .docs import (
     AvgFuncLengthMetric,
     DocstringRatioMetric,
+    DocumentationCountMetric,
     HoldoutMetric,
     IssueTrackerMetric,
+    LicenseTypeMetric,
     ReadmeQualityMetric,
 )
-from .files import LangDistributionMetric, PrimaryLanguageMetric, SourceFilesMetric
-from .git import CommitCountMetric, ContributorsMetric, ReviewedPRMetric, TotalPRMetric
+from .files import (
+    ExtensionsMetric,
+    LangDistributionMetric,
+    PrimaryLanguageMetric,
+    SourceFilesMetric,
+    StackMetric,
+)
+from .git import (
+    BranchCountMetric,
+    CommitCountMetric,
+    ContributorsMetric,
+    CreatedAtMetric,
+    ReviewedPRMetric,
+    TotalPRMetric,
+)
 from .infra import CIChecksMetric, ContainerizedMetric, DeploymentMetric, MonitoringMetric
-from .loc import AutoGenLocMetric, DepDirLocMetric, LogicalLocMetric, RawLocMetric
+from .loc import (
+    AutoGenLocMetric,
+    CommentRatioMetric,
+    DepDirLocMetric,
+    LogicalLocMetric,
+    RawLocMetric,
+    SymbolsCountMetric,
+)
 from .quality import DuplicationMetric, ForkPctMetric
+from .size import GitHistoryMbMetric, RepoBundleMbMetric, WorktreeMbMetric
 from .testing import TestSuiteMetric
 
 __all__ = [
@@ -45,4 +68,16 @@ __all__ = [
     "ReadmeQualityMetric",
     "IssueTrackerMetric",
     "AvgFuncLengthMetric",
+    # v1-ported metrics (AF → AO)
+    "CreatedAtMetric",
+    "LicenseTypeMetric",
+    "BranchCountMetric",
+    "RepoBundleMbMetric",
+    "GitHistoryMbMetric",
+    "WorktreeMbMetric",
+    "ExtensionsMetric",
+    "StackMetric",
+    "DocumentationCountMetric",
+    "CommentRatioMetric",
+    "SymbolsCountMetric",
 ]

@@ -403,176 +403,34 @@ wgsl = ["function_declaration"]
 zig = ["FnProto"]
 
 [metrics]
-# Dependency manager directories — excluded from Logical LOC and Auto-Generated LOC,
-# reported separately in dep_dir_loc (column AE). Only meaningful when these directories
-# are actually committed to git (Go vendor/, iOS Pods/, Elixir deps/, etc.).
+# Dependency directories (spec column AE: dep_dir_loc).
+# Excluded from Logical LOC and Auto-Generated LOC; counted separately.
 # IMPORTANT: every entry here must also appear in scc_exclude_dirs.
 dep_dirs = [
-    # JavaScript / TypeScript
+    "vendor",
     "node_modules",
     "bower_components",
-    "jspm_packages",
-    # Go / PHP / Ruby (Bundler)
-    "vendor",
-    # iOS — CocoaPods (often committed to git)
-    "Pods",
-    # iOS — Carthage (Checkouts/ subdir sometimes committed)
-    "Carthage",
-    # Elixir / Erlang — mix deps
-    "deps",
-    # C / C++ projects (Chromium, Android NDK, game engines)
-    "third_party",
-    "thirdparty",
-    # CMake ExternalProject / FetchContent / vcpkg
-    "external",
-    "vcpkg_installed",
-    # .NET — NuGet (old packages/ convention). NOTE: do NOT use as default —
-    # in JS/TS monorepos (Turborepo, Nx, Lerna) packages/ is own workspace source code.
-    # Add manually per-project if the repo uses NuGet with committed packages/.
-    # "packages",
-    # R — renv library (sometimes committed)
-    "renv",
-    # Elm — compiler-downloaded packages (occasionally committed)
-    "elm-stuff",
-    # Haxe — Haxelib installed libraries
-    "haxe_libraries",
-    # Android legacy / old Java projects — committed JAR/AAR files
-    # Note: do NOT add "lib/" here — it is source code in Flutter/Dart, Ruby, Python.
-    "libs",
-    # Python self-vendoring (pip, setuptools, etc. vendor their own deps)
-    "_vendor",
-    # Manual dependency vendoring via git submodules or copy-paste
-    "submodules",
-    # Xcode / Swift PM — resolved packages in CI (--package-path mode)
-    "SourcePackages",
-    # Lua — LuaRocks local install (analogous to node_modules)
-    "lua_modules",
-    # Nim — Nimble lockfile-based install
-    "nimbledeps",
-    # Terraform — provider binaries (discouraged to commit, but seen in practice)
-    ".terraform",
 ]
 
-# Directories passed to scc --exclude-dir for Logical LOC calculation.
-# Must contain all dep_dirs entries plus build-artifact directories.
+# Directories excluded from scc for Logical LOC (spec column G).
+# Must contain all dep_dirs entries.
 scc_exclude_dirs = [
-    # --- Dependency directories (must mirror dep_dirs) ---
     "node_modules",
-    "bower_components",
-    "jspm_packages",
     "vendor",
-    "Pods",
-    "Carthage",
-    "deps",
-    "third_party",
-    "thirdparty",
-    "external",
-    "vcpkg_installed",
-    # "packages",  — see dep_dirs note; omitted to avoid excluding JS monorepo workspace packages
-    "renv",
-    "elm-stuff",
-    "haxe_libraries",
-    "libs",
-    "_vendor",
-    "submodules",
-    "SourcePackages",
-    "lua_modules",
-    "nimbledeps",
-    ".terraform",
-    # --- Build artifact directories ---
-    # Generic
     "dist",
     "build",
-    "out",
-    # Rust / Maven / SBT
-    "target",
-    # Gradle (Android, Kotlin, Java)
-    ".gradle",
-    # Haskell Stack
-    ".stack-work",
-    # OCaml opam / Dune; also Elixir mix build output
-    "_opam",
-    "_build",
-    # Zig build system
-    "zig-cache",
-    "zig-out",
-    # Dart / Flutter tooling cache
-    ".dart_tool",
-    # Nim compiler cache
-    "nimcache",
-    # CMake in-source build dirs (CLion default names)
-    "CMakeFiles",
-    "cmake-build-debug",
-    "cmake-build-release",
-    # Python virtualenvs / byte-code caches
-    ".venv",
-    "venv",
-    "env",
-    ".tox",
-    "__pycache__",
-    # Frontend framework build outputs
-    ".svelte-kit",
-    ".parcel-cache",
-    ".turbo",
-    # Unity — project Library and temp dirs (often committed but are build caches)
-    "Library",
-    "Temp",
-    # Test / coverage output
-    "coverage",
-    "storybook-static",
-    "htmlcov",
-    "TestResults",
-    # Bazel build system (Google, Android AOSP, large monorepos)
-    "bazel-bin",
-    "bazel-out",
-    "bazel-genfiles",
-    # Buck build system (Meta / Facebook projects)
-    "buck-out",
-    # .NET / Unity — intermediate compilation objects
-    "obj",
-    # Xcode — main build output (rarely committed but large when present)
-    "DerivedData",
-    # Python static analysis / linter caches
-    ".mypy_cache",
-    ".ruff_cache",
-    ".pytest_cache",
-    # Documentation site build outputs
-    "site",
-    "public",
-    # React Native — Expo tooling cache
-    ".expo",
-    # Docusaurus framework cache
-    ".docusaurus",
+    "bower_components",
 ]
 
-# Directories treated as auto-generated code WITHIN Logical LOC scope.
-# Rule: these dirs must NOT appear in scc_exclude_dirs — they are counted in
-# Logical LOC and then reported separately as Auto-Generated LOC (column H).
+# Directories treated as auto-generated code (spec column H: autogen_loc).
+# Files here are eligible only if they also fall within the logical_loc scope
+# (i.e. not in scc_exclude_dirs). "out" appears in both lists — it contributes 0
+# because the scoping filter excludes it from logical_loc.
 autogen_dirs = [
-    # Generic code-generation output
     "generated",
-    "gen",
-    "codegen",
-    "__generated__",
-    # Database migrations (auto-generated by ORM tools)
     "migrations",
-    # Protobuf stubs
-    "pb",
-    "proto_gen",
-    # gRPC generated code
-    "grpc",
-    # OpenAPI / Swagger generated client or server code.
-    # Note: also matches hand-written spec directories — verify per project.
-    "openapi",
-    "swagger",
-    # Mock generation (Go mockery, Java Mockito generated sources, etc.)
-    "mock",
-    "mocks",
-    # Frontend framework caches included in Logical LOC, counted as auto-gen
-    ".cache",
+    "__generated__",
+    "out",
     ".next",
     ".nuxt",
-    # Test snapshots / fixtures (Jest, Vitest)
-    "__snapshots__",
-    "snapshots",
 ]
