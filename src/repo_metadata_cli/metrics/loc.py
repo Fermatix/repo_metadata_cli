@@ -35,15 +35,12 @@ class AutoGenLocMetric(BaseMetric):
     field_name = "autogen_loc"
 
     def compute(self, ctx: RepoContext) -> Any:
-        ext_map = dict(ctx.settings.tree_sitter.extension_language_map)
         autogen_dirs = set(ctx.settings.metrics.autogen_dirs)
         exclude_dirs = set(ctx.settings.metrics.scc_exclude_dirs)
-        autogen = ctx._cached(
+        return ctx._cached(
             "autogen_loc",
-            lambda: get_auto_gen_loc(ctx.repo_path, ext_map, autogen_dirs, exclude_dirs),
+            lambda: get_auto_gen_loc(ctx.repo_path, autogen_dirs, exclude_dirs),
         )
-        logical = ctx.scc_stats_no_deps["total"]["code"]
-        return min(autogen, logical)
 
 
 class DepDirLocMetric(BaseMetric):

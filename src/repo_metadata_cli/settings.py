@@ -41,7 +41,7 @@ class MetricsSettings:
     )
     autogen_dirs: List[str] = field(
         default_factory=lambda: [
-            "generated", "migrations", "__generated__", ".cache",
+            "generated", "migrations", "__generated__",
             ".next", ".nuxt", "out",
         ]
     )

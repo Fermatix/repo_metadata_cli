@@ -48,18 +48,16 @@ class RepoContext:
     def scc_stats(self) -> dict:
         """scc stats on ALL files (no dir exclusions) — used for Raw LOC (F) and language distribution."""
         from .metric_utils import get_scc_stats  # late import to avoid circularity
-        ext_map = dict(self.settings.tree_sitter.extension_language_map)
-        return self._cached("scc_stats", lambda: get_scc_stats(self.repo_path, ext_map))
+        return self._cached("scc_stats", lambda: get_scc_stats(self.repo_path))
 
     @property
     def scc_stats_no_deps(self) -> dict:
         """scc stats excluding dependency/build dirs — used for Logical LOC (G)."""
         from .metric_utils import get_scc_stats  # late import to avoid circularity
-        ext_map = dict(self.settings.tree_sitter.extension_language_map)
         exclude_dirs = list(self.settings.metrics.scc_exclude_dirs)
         return self._cached(
             "scc_stats_no_deps",
-            lambda: get_scc_stats(self.repo_path, ext_map, exclude_dirs=exclude_dirs),
+            lambda: get_scc_stats(self.repo_path, exclude_dirs=exclude_dirs),
         )
 
     @property
