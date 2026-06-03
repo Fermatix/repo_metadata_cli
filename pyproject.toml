@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "repo-metadata-cli"
 version = "0.1.0"
-description = "CLI utility to compute repository metadata for dataset curation."
+repo_description = "CLI utility to compute repository metadata for dataset curation."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Vladislav Savenkov" }]

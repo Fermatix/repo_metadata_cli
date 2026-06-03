@@ -44,18 +44,18 @@ _UUID_RE = re.compile(
 # Result types
 # ---------------------------------------------------------------------------
 
-Violation = Tuple[str, str, str]  # (check_id, dataset_name, detail)
+Violation = Tuple[str, str, str]  # (check_id, repo_name, detail)
 
 
 class CheckResult:
-    def __init__(self, check_id: str, description: str, is_error: bool) -> None:
+    def __init__(self, check_id: str, repo_description: str, is_error: bool) -> None:
         self.check_id = check_id
-        self.description = description
+        self.repo_description = repo_description
         self.is_error = is_error
         self.violations: List[Violation] = []
 
-    def add(self, dataset_name: str, detail: str) -> None:
-        self.violations.append((self.check_id, str(dataset_name), detail))
+    def add(self, repo_name: str, detail: str) -> None:
+        self.violations.append((self.check_id, str(repo_name), detail))
 
     @property
     def passed(self) -> bool:
@@ -83,49 +83,49 @@ def _parse_lang_dist(value: str) -> dict | None:
 def _check_format(df: pd.DataFrame) -> List[CheckResult]:
     results: List[CheckResult] = []
 
-    def col(check_id: str, description: str, is_error: bool = True) -> CheckResult:
-        r = CheckResult(check_id, description, is_error)
+    def col(check_id: str, repo_description: str, is_error: bool = True) -> CheckResult:
+        r = CheckResult(check_id, repo_description, is_error)
         results.append(r)
         return r
 
-    # dataset_id: non-null, non-empty
-    r = col("id_notnull", "dataset_id is non-null and non-empty")
+    # repo_id: non-null, non-empty
+    r = col("id_notnull", "repo_id is non-null and non-empty")
     for _, row in df.iterrows():
-        v = row.get("dataset_id", "")
+        v = row.get("repo_id", "")
         if pd.isna(v) or str(v).strip() == "":
-            r.add(row.get("dataset_name", "?"), f"dataset_id is empty/null")
+            r.add(row.get("repo_name", "?"), f"repo_id is empty/null")
 
-    # dataset_id: UUID format
-    r = col("uuid_format", "dataset_id matches UUID format")
+    # repo_id: UUID format
+    r = col("uuid_format", "repo_id matches UUID format")
     for _, row in df.iterrows():
-        v = str(row.get("dataset_id", ""))
+        v = str(row.get("repo_id", ""))
         if not _UUID_RE.match(v.strip()):
-            r.add(row.get("dataset_name", "?"), f"'{v}' is not a valid UUID")
+            r.add(row.get("repo_name", "?"), f"'{v}' is not a valid UUID")
 
-    # dataset_name: non-null, non-empty
-    r = col("name_notnull", "dataset_name is non-null and non-empty")
+    # repo_name: non-null, non-empty
+    r = col("name_notnull", "repo_name is non-null and non-empty")
     for _, row in df.iterrows():
-        v = row.get("dataset_name", "")
+        v = row.get("repo_name", "")
         if pd.isna(v) or str(v).strip() == "":
-            r.add(str(row.get("dataset_id", "?")), "dataset_name is empty/null")
+            r.add(str(row.get("repo_id", "?")), "repo_name is empty/null")
 
     # num_repos >= 1
     r = col("num_repos_ge1", "num_repos >= 1")
     mask = pd.to_numeric(df["num_repos"], errors="coerce").fillna(0) < 1
-    for name in df.loc[mask, "dataset_name"]:
-        r.add(name, f"num_repos={df.loc[df['dataset_name']==name, 'num_repos'].values[0]}")
+    for name in df.loc[mask, "repo_name"]:
+        r.add(name, f"num_repos={df.loc[df['repo_name']==name, 'num_repos'].values[0]}")
 
     # Integer non-negative columns
     for col_name, label in [
         ("raw_loc", "F"), ("logical_loc", "G"), ("autogen_loc", "H"),
         ("source_files", "K"), ("commit_count", "N"),
-        ("contributors", "O"), ("total_pr_count", "P"), ("reviewed_pr_count", "Q"),
+        ("contributors_count", "O"), ("total_pr_count", "P"), ("reviewed_pr_count", "Q"),
     ]:
         r = col(f"{col_name}_ge0", f"{col_name} ({label}) >= 0")
         numeric = pd.to_numeric(df[col_name], errors="coerce")
         bad = df[numeric.isna() | (numeric < 0)]
-        for name in bad["dataset_name"]:
-            val = df.loc[df["dataset_name"] == name, col_name].values[0]
+        for name in bad["repo_name"]:
+            val = df.loc[df["repo_name"] == name, col_name].values[0]
             r.add(name, f"{col_name}={val}")
 
     # dep_dir_loc (AE) — optional column, present only when dep dirs are committed to git
@@ -133,8 +133,8 @@ def _check_format(df: pd.DataFrame) -> List[CheckResult]:
         r = col("dep_dir_loc_ge0", "dep_dir_loc (AE) >= 0")
         numeric = pd.to_numeric(df["dep_dir_loc"], errors="coerce")
         bad = df[numeric.isna() | (numeric < 0)]
-        for name in bad["dataset_name"]:
-            val = df.loc[df["dataset_name"] == name, "dep_dir_loc"].values[0]
+        for name in bad["repo_name"]:
+            val = df.loc[df["repo_name"] == name, "dep_dir_loc"].values[0]
             r.add(name, f"dep_dir_loc={val}")
 
     # Float [0,1] columns
@@ -145,16 +145,16 @@ def _check_format(df: pd.DataFrame) -> List[CheckResult]:
         r = col(f"{col_name}_range", f"{col_name} ({label}) in [0.0, 1.0]")
         numeric = pd.to_numeric(df[col_name], errors="coerce")
         bad = df[numeric.isna() | (numeric < 0) | (numeric > 1)]
-        for name in bad["dataset_name"]:
-            val = df.loc[df["dataset_name"] == name, col_name].values[0]
+        for name in bad["repo_name"]:
+            val = df.loc[df["repo_name"] == name, col_name].values[0]
             r.add(name, f"{col_name}={val}")
 
     # avg_func_length >= 0
     r = col("avg_func_length_ge0", "avg_func_length (AA) >= 0")
     numeric = pd.to_numeric(df["avg_func_length"], errors="coerce")
     bad = df[numeric.isna() | (numeric < 0)]
-    for name in bad["dataset_name"]:
-        r.add(name, f"avg_func_length={df.loc[df['dataset_name']==name, 'avg_func_length'].values[0]}")
+    for name in bad["repo_name"]:
+        r.add(name, f"avg_func_length={df.loc[df['repo_name']==name, 'avg_func_length'].values[0]}")
 
     # Categorical columns
     for col_name, allowed, label in [
@@ -169,15 +169,15 @@ def _check_format(df: pd.DataFrame) -> List[CheckResult]:
     ]:
         r = col(f"{col_name}_values", f"{col_name} ({label}) is one of {sorted(allowed)}")
         bad = df[~df[col_name].isin(allowed)]
-        for name in bad["dataset_name"]:
-            val = df.loc[df["dataset_name"] == name, col_name].values[0]
+        for name in bad["repo_name"]:
+            val = df.loc[df["repo_name"] == name, col_name].values[0]
             r.add(name, f"{col_name}='{val}'")
 
     # lang_distribution: valid JSON
     r = col("lang_dist_json", "lang_distribution (M) is valid JSON")
     for _, row in df.iterrows():
         if _parse_lang_dist(row["lang_distribution"]) is None:
-            r.add(row["dataset_name"], f"invalid JSON: {str(row['lang_distribution'])[:60]}")
+            r.add(row["repo_name"], f"invalid JSON: {str(row['lang_distribution'])[:60]}")
 
     # lang_distribution: values sum to ~1.0
     r = col("lang_dist_sum", "lang_distribution values sum to ~1.0 (±0.05)")
@@ -187,7 +187,7 @@ def _check_format(df: pd.DataFrame) -> List[CheckResult]:
             continue
         total = sum(dist.values())
         if abs(total - 1.0) > 0.05:
-            r.add(row["dataset_name"], f"sum={total:.4f}, dist={str(dist)[:80]}")
+            r.add(row["repo_name"], f"sum={total:.4f}, dist={str(dist)[:80]}")
 
     # lang_distribution: each value in [0,1]
     r = col("lang_dist_values_range", "lang_distribution values each in [0, 1]")
@@ -197,7 +197,7 @@ def _check_format(df: pd.DataFrame) -> List[CheckResult]:
             continue
         for lang, pct in dist.items():
             if not isinstance(pct, (int, float)) or pct < 0 or pct > 1:
-                r.add(row["dataset_name"], f"{lang}={pct}")
+                r.add(row["repo_name"], f"{lang}={pct}")
                 break
 
     return results
@@ -211,13 +211,13 @@ def _check_invariants(df: pd.DataFrame) -> Tuple[List[CheckResult], List[CheckRe
     errors: List[CheckResult] = []
     warnings: List[CheckResult] = []
 
-    def err(check_id: str, description: str) -> CheckResult:
-        r = CheckResult(check_id, description, is_error=True)
+    def err(check_id: str, repo_description: str) -> CheckResult:
+        r = CheckResult(check_id, repo_description, is_error=True)
         errors.append(r)
         return r
 
-    def warn(check_id: str, description: str) -> CheckResult:
-        r = CheckResult(check_id, description, is_error=False)
+    def warn(check_id: str, repo_description: str) -> CheckResult:
+        r = CheckResult(check_id, repo_description, is_error=False)
         warnings.append(r)
         return r
 
@@ -225,19 +225,19 @@ def _check_invariants(df: pd.DataFrame) -> Tuple[List[CheckResult], List[CheckRe
     r = err("F_ge_G", "raw_loc (F) >= logical_loc (G)")
     bad = df[pd.to_numeric(df["raw_loc"], errors="coerce") < pd.to_numeric(df["logical_loc"], errors="coerce")]
     for _, row in bad.iterrows():
-        r.add(row["dataset_name"], f"raw_loc={row['raw_loc']}, logical_loc={row['logical_loc']}")
+        r.add(row["repo_name"], f"raw_loc={row['raw_loc']}, logical_loc={row['logical_loc']}")
 
     # G >= H
     r = err("G_ge_H", "logical_loc (G) >= autogen_loc (H)")
     bad = df[pd.to_numeric(df["logical_loc"], errors="coerce") < pd.to_numeric(df["autogen_loc"], errors="coerce")]
     for _, row in bad.iterrows():
-        r.add(row["dataset_name"], f"logical_loc={row['logical_loc']}, autogen_loc={row['autogen_loc']}")
+        r.add(row["repo_name"], f"logical_loc={row['logical_loc']}, autogen_loc={row['autogen_loc']}")
 
     # Q <= P
     r = err("Q_le_P", "reviewed_pr_count (Q) <= total_pr_count (P)")
     bad = df[pd.to_numeric(df["reviewed_pr_count"], errors="coerce") > pd.to_numeric(df["total_pr_count"], errors="coerce")]
     for _, row in bad.iterrows():
-        r.add(row["dataset_name"], f"reviewed_pr={row['reviewed_pr_count']}, total_pr={row['total_pr_count']}")
+        r.add(row["repo_name"], f"reviewed_pr={row['reviewed_pr_count']}, total_pr={row['total_pr_count']}")
 
     # reviewed_pr > 0 but total_pr == 0 (logically impossible)
     r = err("reviewed_without_prs", "reviewed_pr_count > 0 requires total_pr_count > 0")
@@ -246,7 +246,7 @@ def _check_invariants(df: pd.DataFrame) -> Tuple[List[CheckResult], List[CheckRe
         (pd.to_numeric(df["total_pr_count"], errors="coerce") == 0)
     ]
     for _, row in bad.iterrows():
-        r.add(row["dataset_name"], f"reviewed_pr={row['reviewed_pr_count']}, total_pr={row['total_pr_count']}")
+        r.add(row["repo_name"], f"reviewed_pr={row['reviewed_pr_count']}, total_pr={row['total_pr_count']}")
 
     # AE <= F: dep_dir_loc cannot exceed raw_loc
     if "dep_dir_loc" in df.columns:
@@ -255,7 +255,7 @@ def _check_invariants(df: pd.DataFrame) -> Tuple[List[CheckResult], List[CheckRe
         dep = pd.to_numeric(df["dep_dir_loc"], errors="coerce")
         bad = df[dep > raw]
         for _, row in bad.iterrows():
-            r.add(row["dataset_name"], f"dep_dir_loc={row['dep_dir_loc']}, raw_loc={row['raw_loc']}")
+            r.add(row["repo_name"], f"dep_dir_loc={row['dep_dir_loc']}, raw_loc={row['raw_loc']}")
 
     # F == G warning (no blanks/comments — spec says "likely incorrect")
     r = warn("F_eq_G", "raw_loc == logical_loc with raw_loc > 0 (spec: 'likely incorrect')")
@@ -263,7 +263,7 @@ def _check_invariants(df: pd.DataFrame) -> Tuple[List[CheckResult], List[CheckRe
     logical = pd.to_numeric(df["logical_loc"], errors="coerce")
     bad = df[(raw == logical) & (raw > 0)]
     for _, row in bad.iterrows():
-        r.add(row["dataset_name"], f"raw_loc=logical_loc={row['raw_loc']}")
+        r.add(row["repo_name"], f"raw_loc=logical_loc={row['raw_loc']}")
 
     return errors, warnings
 
@@ -276,27 +276,27 @@ def _check_business_logic(df: pd.DataFrame) -> Tuple[List[CheckResult], List[Che
     errors: List[CheckResult] = []
     warnings: List[CheckResult] = []
 
-    def err(check_id: str, description: str) -> CheckResult:
-        r = CheckResult(check_id, description, is_error=True)
+    def err(check_id: str, repo_description: str) -> CheckResult:
+        r = CheckResult(check_id, repo_description, is_error=True)
         errors.append(r)
         return r
 
-    def warn(check_id: str, description: str) -> CheckResult:
-        r = CheckResult(check_id, description, is_error=False)
+    def warn(check_id: str, repo_description: str) -> CheckResult:
+        r = CheckResult(check_id, repo_description, is_error=False)
         warnings.append(r)
         return r
 
-    # dataset_id uniqueness
-    r = err("id_unique", "dataset_id is unique across all rows")
-    dupes = df[df["dataset_id"].duplicated(keep=False)]
+    # repo_id uniqueness
+    r = err("id_unique", "repo_id is unique across all rows")
+    dupes = df[df["repo_id"].duplicated(keep=False)]
     for _, row in dupes.iterrows():
-        r.add(row["dataset_name"], f"dataset_id={row['dataset_id']} is duplicated")
+        r.add(row["repo_name"], f"repo_id={row['repo_id']} is duplicated")
 
-    # dataset_name uniqueness
-    r = err("name_unique", "dataset_name is unique across all rows")
-    dupes = df[df["dataset_name"].duplicated(keep=False)]
+    # repo_name uniqueness
+    r = err("name_unique", "repo_name is unique across all rows")
+    dupes = df[df["repo_name"].duplicated(keep=False)]
     for _, row in dupes.iterrows():
-        r.add(row["dataset_name"], "dataset_name appears more than once")
+        r.add(row["repo_name"], "repo_name appears more than once")
 
     # primary_language in lang_distribution
     r = warn("primary_in_dist", "primary_language (L) is present in lang_distribution (M)")
@@ -311,7 +311,7 @@ def _check_business_logic(df: pd.DataFrame) -> Tuple[List[CheckResult], List[Che
         if dist is None or not dist:
             continue
         if lang not in dist:
-            r.add(row["dataset_name"], f"primary='{lang}' not in distribution keys: {list(dist.keys())[:5]}")
+            r.add(row["repo_name"], f"primary='{lang}' not in distribution keys: {list(dist.keys())[:5]}")
 
     # Full CI-CD / Enterprise without ci_checks=Yes
     r = warn("cicd_needs_ci", "deployment_infra Full CI-CD/Enterprise implies ci_checks=Yes")
@@ -320,7 +320,7 @@ def _check_business_logic(df: pd.DataFrame) -> Tuple[List[CheckResult], List[Che
         (df["ci_checks"] != "Yes")
     ]
     for _, row in bad.iterrows():
-        r.add(row["dataset_name"], f"deployment={row['deployment_infra']}, ci_checks={row['ci_checks']}")
+        r.add(row["repo_name"], f"deployment={row['deployment_infra']}, ci_checks={row['ci_checks']}")
 
     # source_files > 0 but logical_loc == 0
     r = warn("files_but_no_code", "if source_files > 0 then logical_loc > 0")
@@ -329,7 +329,7 @@ def _check_business_logic(df: pd.DataFrame) -> Tuple[List[CheckResult], List[Che
         (pd.to_numeric(df["logical_loc"], errors="coerce") == 0)
     ]
     for _, row in bad.iterrows():
-        r.add(row["dataset_name"], f"source_files={row['source_files']}, logical_loc=0")
+        r.add(row["repo_name"], f"source_files={row['source_files']}, logical_loc=0")
 
     # logical_loc == 0 but avg_func_length > 0
     r = warn("no_code_but_functions", "if logical_loc == 0 then avg_func_length == 0")
@@ -338,7 +338,7 @@ def _check_business_logic(df: pd.DataFrame) -> Tuple[List[CheckResult], List[Che
         (pd.to_numeric(df["avg_func_length"], errors="coerce") > 0)
     ]
     for _, row in bad.iterrows():
-        r.add(row["dataset_name"], f"logical_loc=0, avg_func_length={row['avg_func_length']}")
+        r.add(row["repo_name"], f"logical_loc=0, avg_func_length={row['avg_func_length']}")
 
     return errors, warnings
 
@@ -350,8 +350,8 @@ def _check_business_logic(df: pd.DataFrame) -> Tuple[List[CheckResult], List[Che
 def _check_suspicious_values(df: pd.DataFrame) -> List[CheckResult]:
     warnings: List[CheckResult] = []
 
-    def warn(check_id: str, description: str) -> CheckResult:
-        r = CheckResult(check_id, description, is_error=False)
+    def warn(check_id: str, repo_description: str) -> CheckResult:
+        r = CheckResult(check_id, repo_description, is_error=False)
         warnings.append(r)
         return r
 
@@ -359,7 +359,7 @@ def _check_suspicious_values(df: pd.DataFrame) -> List[CheckResult]:
     r = warn("non_code_primary", f"primary_language is a non-code type (SVG, JSON, Plain Text, etc.)")
     bad = df[df["primary_language"].isin(_NON_CODE_PRIMARY_LANGS)]
     for _, row in bad.iterrows():
-        r.add(row["dataset_name"], f"primary_language='{row['primary_language']}'")
+        r.add(row["repo_name"], f"primary_language='{row['primary_language']}'")
 
     # All duplication = 0.0 (> 90% of rows)
     total = len(df)
@@ -372,13 +372,13 @@ def _check_suspicious_values(df: pd.DataFrame) -> List[CheckResult]:
     r = warn("extreme_func_length", "avg_func_length > 100 (possible tree-sitter parsing error)")
     bad = df[pd.to_numeric(df["avg_func_length"], errors="coerce") > 100]
     for _, row in bad.iterrows():
-        r.add(row["dataset_name"], f"avg_func_length={row['avg_func_length']}")
+        r.add(row["repo_name"], f"avg_func_length={row['avg_func_length']}")
 
     # Zero commits
     r = warn("zero_commits", "commit_count == 0 (empty or malformed repo)")
     bad = df[pd.to_numeric(df["commit_count"], errors="coerce") == 0]
     for _, row in bad.iterrows():
-        r.add(row["dataset_name"], "commit_count=0")
+        r.add(row["repo_name"], "commit_count=0")
 
     # fork_pct = 1.0 for majority of repos
     fork_one = (pd.to_numeric(df["fork_pct"], errors="coerce") == 1.0).sum()
@@ -393,7 +393,7 @@ def _check_suspicious_values(df: pd.DataFrame) -> List[CheckResult]:
         (pd.to_numeric(df["source_files"], errors="coerce") > 0)
     ]
     for _, row in bad.iterrows():
-        r.add(row["dataset_name"], f"raw_loc=0, source_files={row['source_files']}")
+        r.add(row["repo_name"], f"raw_loc=0, source_files={row['source_files']}")
 
     return warnings
 
@@ -426,7 +426,7 @@ def _print_report(
     if failed_errors:
         print("ERRORS (must fix):")
         for r in failed_errors:
-            print(f"  ❌ [{r.check_id}] {r.description}: {len(r.violations)} violation(s)")
+            print(f"  ❌ [{r.check_id}] {r.repo_description}: {len(r.violations)} violation(s)")
             for _, name, detail in r.violations[:10]:
                 print(f"       - {name}: {detail}")
             if len(r.violations) > 10:
@@ -438,7 +438,7 @@ def _print_report(
     if failed_warnings:
         print("WARNINGS (should review):")
         for r in failed_warnings:
-            print(f"  ⚠️  [{r.check_id}] {r.description}: {len(r.violations)} row(s)")
+            print(f"  ⚠️  [{r.check_id}] {r.repo_description}: {len(r.violations)} row(s)")
             for _, name, detail in r.violations[:5]:
                 print(f"       - {name}: {detail}")
             if len(r.violations) > 5:
@@ -451,7 +451,7 @@ def _print_report(
         print("PASSED:")
         for r in passed:
             total_checked = total_rows
-            print(f"  ✅ [{r.check_id}] {r.description} ({total_checked}/{total_checked})")
+            print(f"  ✅ [{r.check_id}] {r.repo_description} ({total_checked}/{total_checked})")
         print()
 
     total_error_count = sum(len(r.violations) for r in failed_errors)

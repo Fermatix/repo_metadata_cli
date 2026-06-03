@@ -1,11 +1,36 @@
-"""Columns K, L, M — Source file count, primary language, language distribution."""
+"""Columns K, L, M — Source file count, primary language, language distribution.
+
+Also hosts AL/AM (extensions, stack) ported from v1.
+"""
 
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 from ..base_metric import BaseMetric, RepoContext
+from ..metric_utils import get_scc_file_stats
+
+
+def _lang_distribution(ctx: RepoContext) -> dict[str, float]:
+    """Language → fraction of Code lines ≥ 1% (excl node_modules/vendor).
+
+    Cached on the context so PrimaryLanguageMetric (L) and LangDistributionMetric (M)
+    stay consistent — primary_language is always the max key of this distribution.
+    """
+    def _compute() -> dict[str, float]:
+        langs = ctx.scc_stats_no_deps.get("languages", [])
+        total_code = ctx.scc_stats_no_deps["total"]["code"]
+        if total_code == 0 or not langs:
+            return {}
+        return {
+            l["name"]: round(l["code"] / total_code, 6)
+            for l in langs
+            if l["code"] / total_code >= 0.01
+        }
+
+    return ctx._cached("lang_distribution", _compute)
 
 
 class SourceFilesMetric(BaseMetric):
@@ -19,17 +44,16 @@ class SourceFilesMetric(BaseMetric):
 
 
 class PrimaryLanguageMetric(BaseMetric):
-    """L: Language with the highest Code line count (excluding node_modules/vendor)."""
+    """L: Language with the highest share in lang_distribution (excl node_modules/vendor)."""
 
     column = "L"
     field_name = "primary_language"
 
     def compute(self, ctx: RepoContext) -> Any:
-        langs = ctx.scc_stats_no_deps.get("languages", [])
-        if not langs:
+        distribution = _lang_distribution(ctx)
+        if not distribution:
             return ""
-        best = max(langs, key=lambda l: l["code"])
-        return best["name"] if best["code"] > 0 else ""
+        return max(distribution, key=distribution.get)
 
 
 class LangDistributionMetric(BaseMetric):
@@ -39,13 +63,49 @@ class LangDistributionMetric(BaseMetric):
     field_name = "lang_distribution"
 
     def compute(self, ctx: RepoContext) -> Any:
+        return json.dumps(_lang_distribution(ctx), ensure_ascii=False)
+
+
+class ExtensionsMetric(BaseMetric):
+    """AL: JSON dict of file extension → fraction of Code lines (excl dependency dirs)."""
+
+    column = "AL"
+    field_name = "extensions"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        exclude_dirs = list(ctx.settings.metrics.scc_exclude_dirs)
+        file_stats = ctx._cached(
+            "scc_file_stats_no_deps",
+            lambda: get_scc_file_stats(ctx.repo_path, exclude_dirs=exclude_dirs),
+        )
+        ext_code: dict[str, int] = {}
+        for entry in file_stats:
+            ext = Path(entry["path"]).suffix.lower()
+            code = int(entry["code"])
+            if not ext or code <= 0:
+                continue
+            ext_code[ext] = ext_code.get(ext, 0) + code
+
+        total = sum(ext_code.values())
+        if total <= 0:
+            return json.dumps({})
+        distribution = {ext: round(c / total, 6) for ext, c in ext_code.items()}
+        return json.dumps(distribution, ensure_ascii=False)
+
+
+class StackMetric(BaseMetric):
+    """AM: Human-readable top-3 languages with percentages, e.g. "Python (62%), Go (30%)"."""
+
+    column = "AM"
+    field_name = "stack"
+
+    def compute(self, ctx: RepoContext) -> Any:
         langs = ctx.scc_stats_no_deps.get("languages", [])
         total_code = ctx.scc_stats_no_deps["total"]["code"]
         if total_code == 0 or not langs:
-            return json.dumps({})
-        distribution = {
-            l["name"]: round(l["code"] / total_code, 6)
-            for l in langs
-            if l["code"] / total_code >= 0.01
-        }
-        return json.dumps(distribution, ensure_ascii=False)
+            return ""
+        ranked = sorted(
+            ((l["name"], l["code"]) for l in langs if l["code"] > 0),
+            key=lambda x: -x[1],
+        )[:3]
+        return ", ".join(f"{name} ({code / total_code:.0%})" for name, code in ranked)

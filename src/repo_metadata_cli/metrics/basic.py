@@ -10,7 +10,7 @@ from ..base_metric import BaseMetric, RepoContext
 
 class DatasetIdMetric(BaseMetric):
     column = "A"
-    field_name = "dataset_id"
+    field_name = "repo_id"
 
     def compute(self, ctx: RepoContext) -> Any:
         return str(uuid.uuid4())
@@ -18,15 +18,15 @@ class DatasetIdMetric(BaseMetric):
 
 class VendorNameMetric(BaseMetric):
     column = "B"
-    field_name = "vendor_name"
+    field_name = "partner_name"
 
     def compute(self, ctx: RepoContext) -> Any:
-        return ctx.vendor_name
+        return ctx.partner_name
 
 
 class DatasetNameMetric(BaseMetric):
     column = "C"
-    field_name = "dataset_name"
+    field_name = "repo_name"
 
     def compute(self, ctx: RepoContext) -> Any:
         return ctx.bundle_name
