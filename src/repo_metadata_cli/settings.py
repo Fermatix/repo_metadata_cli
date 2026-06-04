@@ -54,6 +54,8 @@ class AppSettings:
     metrics: MetricsSettings = field(default_factory=MetricsSettings)
     # Optional pre-computed PR cache: {bundle_stem -> {total_pr, reviewed_pr, url}}
     pr_cache: Dict[str, dict] = field(default_factory=dict)
+    # Optional {bundle_stem -> partner_name} map, built from a repos.txt URL list.
+    partner_map: Dict[str, str] = field(default_factory=dict)
 
 
 def _parse_list(raw) -> Optional[List[str]]:

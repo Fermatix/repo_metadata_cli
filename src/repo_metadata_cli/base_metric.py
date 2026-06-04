@@ -35,6 +35,11 @@ class RepoContext:
 
     @property
     def partner_name(self) -> str:
+        # When launched from a repos.txt URL list, partner_map resolves the
+        # bundle to a partner_name parsed from its source URL (or "bundles").
+        mapped = self.settings.partner_map.get(self.bundle_name)
+        if mapped is not None:
+            return mapped
         if self.bundle_path is not None:
             return self.bundle_path.parent.name
         return self.repo_path.parent.name
