@@ -57,12 +57,12 @@ git clone <URL репозитория утилиты>
 cd repo_metadata_cli
 
 # Создать виртуальное окружение и установить зависимости
-uv venv
+uv venv --seed -p 3.11
 source .venv/bin/activate
 uv sync
 
 # Установить языковые грамматики для анализа кода
-repo-metadata fetch-grammars
+uv run repo-metadata fetch-grammars
 ```
 
 ---
