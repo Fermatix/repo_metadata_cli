@@ -298,7 +298,10 @@ def run_jscpd(repo_dir: Path) -> float:
             "jscpd",
             "--min-tokens", "50",
             "--min-lines", "5",
-            "--max-size", "200",
+            # jscpd parses a unit-less value as BYTES; "200" skipped every real
+            # source file and made duplication_ratio always 0.  Use an explicit
+            # unit with generous headroom (autogen/lock files are excluded above).
+            "--max-size", "1024mb",
             "--reporters", "json",
             "--output", str(report_dir),
             "--ignore", ignore_pattern,
