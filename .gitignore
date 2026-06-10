@@ -34,3 +34,4 @@ htmlcov/
 *.txt
 *.json
 tmp/
+.to_send

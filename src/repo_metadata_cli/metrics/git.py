@@ -90,14 +90,37 @@ class ReviewedPRMetric(BaseMetric):
 
 
 class BranchCountMetric(BaseMetric):
-    """AH: Total number of local and remote branches (ported from v1)."""
+    """AH: Number of distinct branches in the repository.
+
+    Counts unique branch names across both local heads and ``origin`` remote
+    branches (a bundle is materialized through the ``origin`` remote, so its
+    branches live under ``refs/remotes/origin/*``).  Deduplicating by name and
+    reading refs directly avoids the artifacts that inflated the old
+    ``git branch -a`` line count by a fixed +3: the detached-HEAD pseudo-entry,
+    the extra local branch ``git clone`` leaves behind, and the symbolic
+    ``origin/HEAD`` alias.
+    """
 
     column = "AH"
     field_name = "branch_count"
 
+    _PREFIXES = ("refs/heads/", "refs/remotes/origin/")
+
     def compute(self, ctx: RepoContext) -> Any:
-        out = run_cmd(["git", "branch", "-a"], cwd=ctx.repo_path)
-        return len([line for line in out.splitlines() if line.strip()])
+        out = run_cmd(
+            ["git", "for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes/origin"],
+            cwd=ctx.repo_path,
+        )
+        names = set()
+        for line in out.splitlines():
+            ref = line.strip()
+            for prefix in self._PREFIXES:
+                if ref.startswith(prefix):
+                    name = ref[len(prefix):]
+                    if name and name != "HEAD":
+                        names.add(name)
+                    break
+        return len(names)
 
 
 class CreatedAtMetric(BaseMetric):
