@@ -51,6 +51,12 @@ class RepoContext:
         # URL had no namespace or the run was not driven by a repos.txt list.
         return self.settings.org_map.get(self.bundle_name, "")
 
+    @property
+    def repo_name(self) -> str:
+        # Bundles are named by the full path (bundle_name); name_map recovers the
+        # short leaf name. Falls back to bundle_name when no map (directory mode).
+        return self.settings.name_map.get(self.bundle_name, self.bundle_name)
+
     def _cached(self, key: str, fn: Callable[[], Any]) -> Any:
         if key not in self._cache:
             self._cache[key] = fn()

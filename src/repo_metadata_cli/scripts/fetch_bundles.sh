@@ -98,7 +98,12 @@ process_repo() {
 
   local mirror_name bundle_name repo_dir bundle_path
   mirror_name="$(safe_name "$repo")"
-  bundle_name="$(repo_only_name "$repo")"
+  # Name bundles by the FULL namespace path (safe_name), not just the leaf
+  # (repo_only_name). Leaf-only names collide when the same repo name exists
+  # under different groups (e.g. <a>/backend and <b>/backend both -> backend),
+  # which makes repo_org/repo_id assignment ambiguous downstream. The full-path
+  # name is unique. Must stay in sync with partner.bundle_stem_from_url.
+  bundle_name="$mirror_name"
   repo_dir="$MIRRORS_DIR/$mirror_name.git"
   bundle_path="$BUNDLES_DIR/$bundle_name.bundle"
   log_prefix="[$bundle_name]"
