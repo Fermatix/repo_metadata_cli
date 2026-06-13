@@ -172,11 +172,15 @@ def metadata(
     # When launched from a repos.txt URL list, build the partner_name map so the
     # partner_name column is filled from each repo's source URL (else "bundles").
     if repos_file is not None:
-        from .partner import build_partner_map
+        from .partner import build_org_map, build_partner_map
 
         settings.partner_map = build_partner_map(repos_file)
         logger.info(
             "Built partner map for %d repos from %s", len(settings.partner_map), repos_file
+        )
+        settings.org_map = build_org_map(repos_file)
+        logger.info(
+            "Built repo_org map for %d repos from %s", len(settings.org_map), repos_file
         )
 
     if pr_cache is not None:

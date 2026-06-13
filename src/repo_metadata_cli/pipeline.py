@@ -46,6 +46,7 @@ from .metrics import (  # metrics/ package — all metric classes via __init__.p
     RawLocMetric,
     ReadmeQualityMetric,
     RepoBundleMbMetric,
+    RepoOrgMetric,
     ReviewedPRMetric,
     SourceFilesMetric,
     StackMetric,
@@ -66,6 +67,7 @@ logger = logging.getLogger(__name__)
 METRICS: list[Type[BaseMetric]] = [
     DatasetIdMetric,       # A
     VendorNameMetric,      # B
+    RepoOrgMetric,         # B2 — full namespace path from source URL
     DatasetNameMetric,     # C
     DescriptionMetric,     # D
     NumReposMetric,        # E

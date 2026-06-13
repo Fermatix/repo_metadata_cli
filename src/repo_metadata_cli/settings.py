@@ -56,6 +56,8 @@ class AppSettings:
     pr_cache: Dict[str, dict] = field(default_factory=dict)
     # Optional {bundle_stem -> partner_name} map, built from a repos.txt URL list.
     partner_map: Dict[str, str] = field(default_factory=dict)
+    # Optional {bundle_stem -> repo_org} map (full namespace path), same source.
+    org_map: Dict[str, str] = field(default_factory=dict)
 
 
 def _parse_list(raw) -> Optional[List[str]]:

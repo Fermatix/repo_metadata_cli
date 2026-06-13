@@ -89,3 +89,45 @@ def test_partner_name_falls_back_to_dir_when_map_empty():
     # No repos.txt mode → empty map → previous behaviour (parent dir name).
     ctx = _ctx(Path("/tmp/bundles/cool-repo.bundle"), {})
     assert ctx.partner_name == "bundles"
+
+
+# --- repo_org -------------------------------------------------------------
+
+def test_parse_repo_org_full_namespace():
+    from repo_metadata_cli.partner import parse_repo_org
+    assert parse_repo_org(
+        "https://git.example.com/examplegrp/sample-suite/devops/logging.git"
+    ) == "examplegrp/sample-suite/devops"
+    assert parse_repo_org(_PARTNER_URL) == (
+        "mirror-org/partner-private-repos/acme_corp"
+    )
+    assert parse_repo_org("git@github.com:owner/Repo.Name.git") == "owner"
+
+
+def test_parse_repo_org_none_when_no_namespace():
+    from repo_metadata_cli.partner import parse_repo_org
+    assert parse_repo_org("https://example.com/justrepo.git") is None
+    assert parse_repo_org("") is None
+
+
+def test_build_org_map_collision_last_wins(tmp_path):
+    from repo_metadata_cli.partner import build_org_map
+    f = tmp_path / "repos.txt"
+    f.write_text(
+        "https://git.example.com/examplegrp/alpha-fin/backend.git\n"
+        "https://git.example.com/examplegrp/beta-fin/backend.git\n"
+        "https://git.example.com/examplegrp/unit/unit-backend.git\n"
+    )
+    m = build_org_map(f)
+    # leaf 'backend' collides -> last org wins; unique 'unit-backend' kept.
+    assert m["backend"] == "examplegrp/beta-fin"
+    assert m["unit-backend"] == "examplegrp/unit"
+
+
+def test_repo_org_property_from_map():
+    ctx = _ctx(Path("/tmp/bundles/cool-repo.bundle"), {})
+    ctx.settings.org_map = {"cool-repo": "acme/group"}
+    assert ctx.repo_org == "acme/group"
+    # missing -> empty string
+    ctx2 = _ctx(Path("/tmp/bundles/other.bundle"), {})
+    assert ctx2.repo_org == ""

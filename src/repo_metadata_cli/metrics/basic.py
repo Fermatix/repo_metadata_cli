@@ -32,6 +32,14 @@ class DatasetNameMetric(BaseMetric):
         return ctx.bundle_name
 
 
+class RepoOrgMetric(BaseMetric):
+    column = "B2"
+    field_name = "repo_org"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return ctx.repo_org
+
+
 class NumReposMetric(BaseMetric):
     column = "E"
     field_name = "num_repos"
