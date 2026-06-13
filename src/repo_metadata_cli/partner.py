@@ -33,19 +33,70 @@ def parse_partner_name(url: str) -> Optional[str]:
     return match.group(1) if match else None
 
 
-def bundle_stem_from_url(url: str) -> str:
-    """Reproduce fetch_bundles.sh `repo_only_name`: the sanitized last path segment.
+def parse_repo_org(url: str) -> Optional[str]:
+    """Return the namespace/org path of a repo URL — everything between the host
+    and the final repo segment, joined with '/'.
 
-    Must stay in sync with src/repo_metadata_cli/scripts/fetch_bundles.sh so the
-    stem matches the on-disk *.bundle filename (== RepoContext.bundle_name).
+    Examples:
+        git.softlex.pro/softlex/funeral-organizer/devops/logging.git
+            -> "softlex/funeral-organizer/devops"
+        gitlab.com/doubletapp/data-llm/partner-private-repos/4rome/kapika
+            -> "doubletapp/data-llm/partner-private-repos/4rome"
+
+    Returns None when the URL has no namespace (host + repo only) or is unparseable.
     """
+    s = url.strip().rstrip("/")
+    if not s:
+        return None
+    if s.endswith(".git"):
+        s = s[:-4]
+    s = re.sub(r"^[a-zA-Z]+://", "", s)   # strip scheme
+    s = s.replace(":", "/", 1)            # scp-like host:path -> host/path
+    s = re.sub(r"^[^@/]+@", "", s)        # strip leading user@
+    if "/" not in s:
+        return None
+    path = s.split("/", 1)[1]             # drop host
+    segments = [seg for seg in path.split("/") if seg]
+    if len(segments) <= 1:                # only the repo segment, no namespace
+        return None
+    return "/".join(segments[:-1])
+
+
+def _url_path(url: str) -> str:
+    """Strip scheme/user/host from a repo URL, returning the namespace path
+    (without a trailing .git). Shared by the stem/leaf/org helpers."""
     s = url.strip().rstrip("/")
     if s.endswith(".git"):
         s = s[:-4]
     s = re.sub(r"^[a-zA-Z]+://", "", s)   # strip scheme
     s = s.replace(":", "/", 1)            # scp-like host:path → host/path
     s = re.sub(r"^[^@/]+@", "", s)        # strip leading user@
-    path = s.split("/", 1)[1] if "/" in s else s
+    return s.split("/", 1)[1] if "/" in s else s
+
+
+def bundle_stem_from_url(url: str) -> str:
+    """Reproduce fetch_bundles.sh `safe_name`: the FULL namespace path, sanitized.
+
+    The on-disk *.bundle filename (== RepoContext.bundle_name) is now the full
+    path so that repos sharing a leaf under different groups don't collide.
+    Must stay in sync with src/repo_metadata_cli/scripts/fetch_bundles.sh.
+    """
+    path = _url_path(url)
+    base = re.sub(r"/+", "--", path)            # path separators → '--'
+    base = re.sub(r"[^A-Za-z0-9.-]+", "-", base)  # other chars → '-'
+    base = re.sub(r"-+", "-", base)              # collapse runs (also '--' → '-')
+    base = re.sub(r"^[.-]+", "", base)
+    base = re.sub(r"[.-]+$", "", base)
+    if not base:
+        base = "repo"
+    if base.endswith(".git") or base.endswith(".atom"):
+        base = f"{base}-repo"
+    return base
+
+
+def repo_leaf_from_url(url: str) -> str:
+    """The sanitized last path segment (the repo's own name, without namespace)."""
+    path = _url_path(url)
     base = path.rsplit("/", 1)[-1]
     base = re.sub(r"[^A-Za-z0-9.-]+", "-", base)
     base = re.sub(r"-+", "-", base)
@@ -77,4 +128,52 @@ def build_partner_map(repos_file: Path) -> Dict[str, str]:
             continue
         stem = bundle_stem_from_url(url)
         mapping[stem] = parse_partner_name(url) or DEFAULT_PARTNER
+    return mapping
+
+
+def build_org_map(repos_file: Path) -> Dict[str, str]:
+    """Build {bundle_stem -> repo_org} from a repos.txt URL list.
+
+    The org is the full namespace path of each repo URL (see parse_repo_org).
+    Bundles are now named by the full path (bundle_stem_from_url), so the stem is
+    unique per URL and there are no leaf-name collisions. Blank lines and
+    comments (#) are skipped; URLs with no namespace are omitted.
+    """
+    mapping: Dict[str, str] = {}
+    try:
+        lines = repos_file.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except OSError as exc:
+        logger.warning("Could not read repos file %s: %s", repos_file, exc)
+        return mapping
+
+    for line in lines:
+        url = line.strip()
+        if not url or url.startswith("#"):
+            continue
+        org = parse_repo_org(url)
+        if org is None:
+            continue
+        mapping[bundle_stem_from_url(url)] = org
+    return mapping
+
+
+def build_name_map(repos_file: Path) -> Dict[str, str]:
+    """Build {bundle_stem -> repo_leaf} from a repos.txt URL list.
+
+    Bundle filenames are now the full namespace path; this map recovers the
+    repo's own leaf name so the repo_name column stays the short name.
+    Blank lines and comments (#) are skipped.
+    """
+    mapping: Dict[str, str] = {}
+    try:
+        lines = repos_file.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except OSError as exc:
+        logger.warning("Could not read repos file %s: %s", repos_file, exc)
+        return mapping
+
+    for line in lines:
+        url = line.strip()
+        if not url or url.startswith("#"):
+            continue
+        mapping[bundle_stem_from_url(url)] = repo_leaf_from_url(url)
     return mapping
