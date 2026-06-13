@@ -245,6 +245,12 @@ def build_local_repo_context(
 # ---------------------------------------------------------------------------
 
 def _processed_repos(csv_path: Path) -> Set[str]:
+    """Return the set of already-processed bundle stems.
+
+    repo_name is the leaf (not unique across namespaces), so dedup keys on
+    (repo_org, repo_name) — unique per repo — joined as "org\trepo". Falls back
+    to repo_name alone for legacy CSVs without a repo_org column.
+    """
     if not csv_path.exists():
         return set()
     try:
@@ -254,7 +260,13 @@ def _processed_repos(csv_path: Path) -> Set[str]:
         return set()
     if df.empty or "repo_name" not in df.columns:
         return set()
-    processed = set(df["repo_name"].astype(str))
+    if "repo_org" in df.columns:
+        processed = {
+            f"{org}\t{name}"
+            for org, name in zip(df["repo_org"].astype(str), df["repo_name"].astype(str))
+        }
+    else:
+        processed = set(df["repo_name"].astype(str))
     logger.info("%s already contains %d repositories.", csv_path, len(processed))
     return processed
 
@@ -293,9 +305,14 @@ def run_metadata_pipeline(
     processed = _processed_repos(csv_path)
 
     for item in tqdm(items, desc="Metadata"):
-        repo_name = item.name if local_mode else item.stem
-        if repo_name in processed:
-            logger.debug("Skipping %s (already processed)", repo_name)
+        stem = item.name if local_mode else item.stem
+        # Dedup key mirrors _processed_repos: (repo_org, repo_name-leaf). The
+        # stem is the unique full-path bundle name; org/leaf come from the maps.
+        org = settings.org_map.get(stem, "")
+        leaf = settings.name_map.get(stem, stem)
+        key = f"{org}\t{leaf}"
+        if key in processed or stem in processed:
+            logger.debug("Skipping %s (already processed)", stem)
             continue
 
         if local_mode:
@@ -315,6 +332,6 @@ def run_metadata_pipeline(
             header=not csv_path.exists(),
             index=False,
         )
-        processed.add(repo_name)
+        processed.add(key)
 
     logger.info("Metadata pipeline finished; %d repositories processed.", len(processed))

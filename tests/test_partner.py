@@ -23,12 +23,27 @@ def test_parse_partner_name_no_match_returns_none():
     assert parse_partner_name("https://gitlab.com/group/sub/repo.git") is None
 
 
-def test_bundle_stem_matches_repo_basename():
-    assert bundle_stem_from_url(_PARTNER_URL) == "cool-repo"
-    # Non-alphanumeric chars (e.g. underscore) are sanitized to '-', matching
-    # fetch_bundles.sh repo_only_name.
-    assert bundle_stem_from_url("https://github.com/org/My_Repo.git") == "My-Repo"
-    assert bundle_stem_from_url("git@gitlab.com:group/repo.git") == "repo"
+def test_bundle_stem_is_full_path():
+    # Bundles are now named by the FULL namespace path (safe_name), so the same
+    # leaf under different groups yields distinct stems (no collision).
+    assert bundle_stem_from_url(_PARTNER_URL) == (
+        "mirror-org-partner-private-repos-acme-corp-cool-repo"
+    )
+    assert (
+        bundle_stem_from_url("https://git.example.com/examplegrp/alpha-fin/backend.git")
+        != bundle_stem_from_url("https://git.example.com/examplegrp/beta-fin/backend.git")
+    )
+    assert bundle_stem_from_url("https://github.com/org/My_Repo.git") == "org-My-Repo"
+    assert bundle_stem_from_url("git@gitlab.com:group/repo.git") == "group-repo"
+
+
+def test_repo_leaf_from_url():
+    from repo_metadata_cli.partner import repo_leaf_from_url
+    assert repo_leaf_from_url(_PARTNER_URL) == "cool-repo"
+    assert repo_leaf_from_url(
+        "https://git.example.com/examplegrp/alpha-fin/backend.git"
+    ) == "backend"
+    assert repo_leaf_from_url("git@github.com:owner/Repo.Name.git") == "Repo.Name"
 
 
 def test_build_partner_map(tmp_path):
@@ -43,10 +58,10 @@ def test_build_partner_map(tmp_path):
         ])
     )
     mapping = build_partner_map(repos)
-    assert mapping["cool-repo"] == "acme_corp"
-    assert mapping["svc"] == "beta-team"
+    assert mapping[bundle_stem_from_url(_PARTNER_URL)] == "acme_corp"
+    assert mapping["mirror-org-partner-private-repos-beta-team-svc"] == "beta-team"
     # URL outside the partner pattern falls back to "bundles".
-    assert mapping["other"] == DEFAULT_PARTNER == "bundles"
+    assert mapping["external-other"] == DEFAULT_PARTNER == "bundles"
 
 
 def test_build_partner_map_missing_file(tmp_path):
@@ -110,18 +125,42 @@ def test_parse_repo_org_none_when_no_namespace():
     assert parse_repo_org("") is None
 
 
-def test_build_org_map_collision_last_wins(tmp_path):
-    from repo_metadata_cli.partner import build_org_map
+def test_build_org_map_no_collision_full_stem(tmp_path):
+    from repo_metadata_cli.partner import build_org_map, bundle_stem_from_url
     f = tmp_path / "repos.txt"
-    f.write_text(
-        "https://git.example.com/examplegrp/alpha-fin/backend.git\n"
-        "https://git.example.com/examplegrp/beta-fin/backend.git\n"
-        "https://git.example.com/examplegrp/unit/unit-backend.git\n"
-    )
+    urls = [
+        "https://git.example.com/examplegrp/alpha-fin/backend.git",
+        "https://git.example.com/examplegrp/beta-fin/backend.git",
+        "https://git.example.com/examplegrp/unit/unit-backend.git",
+    ]
+    f.write_text("\n".join(urls) + "\n")
     m = build_org_map(f)
-    # leaf 'backend' collides -> last org wins; unique 'unit-backend' kept.
-    assert m["backend"] == "examplegrp/beta-fin"
-    assert m["unit-backend"] == "examplegrp/unit"
+    # Full-path stems are unique -> both 'backend' repos keep their own org.
+    assert m[bundle_stem_from_url(urls[0])] == "examplegrp/alpha-fin"
+    assert m[bundle_stem_from_url(urls[1])] == "examplegrp/beta-fin"
+    assert m[bundle_stem_from_url(urls[2])] == "examplegrp/unit"
+
+
+def test_build_name_map_recovers_leaf(tmp_path):
+    from repo_metadata_cli.partner import build_name_map, bundle_stem_from_url
+    f = tmp_path / "repos.txt"
+    urls = [
+        "https://git.example.com/examplegrp/alpha-fin/backend.git",
+        "https://git.example.com/examplegrp/unit/unit-backend.git",
+    ]
+    f.write_text("\n".join(urls) + "\n")
+    m = build_name_map(f)
+    assert m[bundle_stem_from_url(urls[0])] == "backend"
+    assert m[bundle_stem_from_url(urls[1])] == "unit-backend"
+
+
+def test_repo_name_property_from_map():
+    ctx = _ctx(Path("/tmp/bundles/examplegrp-alpha-fin-backend.bundle"), {})
+    ctx.settings.name_map = {"examplegrp-alpha-fin-backend": "backend"}
+    assert ctx.repo_name == "backend"
+    # No map -> falls back to full bundle stem.
+    ctx2 = _ctx(Path("/tmp/bundles/examplegrp-unit-foo.bundle"), {})
+    assert ctx2.repo_name == "examplegrp-unit-foo"
 
 
 def test_repo_org_property_from_map():
