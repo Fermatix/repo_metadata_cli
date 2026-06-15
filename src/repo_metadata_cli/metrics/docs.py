@@ -52,7 +52,7 @@ class IssueTrackerMetric(BaseMetric):
     field_name = "issue_tracker"
 
     def compute(self, ctx: RepoContext) -> Any:
-        return detect_issue_tracker(ctx.repo_path)
+        return detect_issue_tracker(ctx.repo_path, ctx.vcs)
 
 
 class AvgFuncLengthMetric(BaseMetric):

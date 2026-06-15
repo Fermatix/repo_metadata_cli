@@ -29,27 +29,27 @@ class RepoBundleMbMetric(BaseMetric):
 
 
 class GitHistoryMbMetric(BaseMetric):
-    """AJ: Size of the .git directory in megabytes."""
+    """AJ: Size of the VCS history directory (.git or .hg) in megabytes."""
 
     column = "AJ"
     field_name = "repo_git_history_mb"
 
     def compute(self, ctx: RepoContext) -> Any:
-        git_dir = ctx.repo_path / ".git"
-        if not git_dir.exists():
+        hist_dir = ctx.repo_path / ctx.vcs.history_dirname
+        if not hist_dir.exists():
             return 0.0
-        return get_dir_size_mb(git_dir)
+        return get_dir_size_mb(hist_dir)
 
 
 class WorktreeMbMetric(BaseMetric):
-    """AK: Size of the worktree (total minus .git) in megabytes."""
+    """AK: Size of the worktree (total minus the VCS history dir) in megabytes."""
 
     column = "AK"
     field_name = "repo_worktree_mb"
 
     def compute(self, ctx: RepoContext) -> Any:
         total_kb = _parse_du_kb(run_cmd(["du", "-sk", str(ctx.repo_path)]))
-        git_dir = ctx.repo_path / ".git"
-        git_kb = _parse_du_kb(run_cmd(["du", "-sk", str(git_dir)])) if git_dir.exists() else 0
-        worktree_kb = max(total_kb - git_kb, 0)
+        hist_dir = ctx.repo_path / ctx.vcs.history_dirname
+        hist_kb = _parse_du_kb(run_cmd(["du", "-sk", str(hist_dir)])) if hist_dir.exists() else 0
+        worktree_kb = max(total_kb - hist_kb, 0)
         return round(worktree_kb / 1024, 3)
