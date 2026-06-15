@@ -71,10 +71,13 @@ def build_partner_map(repos_file: Path) -> Dict[str, str]:
         logger.warning("Could not read repos file %s: %s", repos_file, exc)
         return mapping
 
+    from .vcs.detect import strip_vcs_scheme  # late import: avoid import cycle
+
     for line in lines:
         url = line.strip()
         if not url or url.startswith("#"):
             continue
-        stem = bundle_stem_from_url(url)
-        mapping[stem] = parse_partner_name(url) or DEFAULT_PARTNER
+        bare = strip_vcs_scheme(url)  # hg+/git+ URLs map to the same stem as the bare URL
+        stem = bundle_stem_from_url(bare)
+        mapping[stem] = parse_partner_name(bare) or DEFAULT_PARTNER
     return mapping
