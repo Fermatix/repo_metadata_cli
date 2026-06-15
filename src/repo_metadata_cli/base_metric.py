@@ -6,12 +6,14 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, ClassVar, Optional
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional
 
 from .allowed_files import AllowedFiles
 from .settings import AppSettings
 from .tree_sitter_support import TreeSitterManager
-from .utils import run_cmd
+
+if TYPE_CHECKING:
+    from .vcs.base import BaseVCS
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +27,17 @@ class RepoContext:
     tree_sitter: Optional[TreeSitterManager]
     allowed_files: AllowedFiles
     bundle_path: Optional[Path] = None
+    vcs: Optional["BaseVCS"] = None
     _cache: dict = field(default_factory=dict, repr=False)
+
+    def __post_init__(self) -> None:
+        # Auto-detect the VCS from the working copy when not provided, so every
+        # existing RepoContext(...) call site keeps working.  A plain directory
+        # with neither .git nor .hg defaults to git (commands return "" → metrics
+        # yield 0), preserving the no-VCS local-mode behaviour.
+        if self.vcs is None:
+            from .vcs.detect import detect_vcs_from_path  # late import: avoid cycle
+            self.vcs = detect_vcs_from_path(self.repo_path)
 
     @property
     def bundle_name(self) -> str:
@@ -79,23 +91,12 @@ class RepoContext:
         )
 
     @property
-    def git_log_no_merges(self) -> list[str]:
-        """Non-merge, non-revert commits on the default branch (spec column N)."""
-        def _compute() -> list[str]:
-            raw = run_cmd(["git", "log", "--no-merges", "--oneline"], cwd=self.repo_path)
-            return [
-                line for line in raw.splitlines()
-                if line.strip() and "revert" not in line.lower()
-            ]
-        return self._cached("git_log_no_merges", _compute)
-
-    @property
     def file_tree(self) -> list[str]:
-        """Up to 40 file paths (git-tracked when available, filesystem walk otherwise)."""
+        """Up to 40 file paths (VCS-tracked when available, filesystem walk otherwise)."""
         def _compute() -> list[str]:
-            raw = run_cmd(["git", "ls-tree", "-r", "--name-only", "HEAD"], cwd=self.repo_path)
-            if raw:
-                return raw.splitlines()[:40]
+            tracked = self.vcs.file_tree(self.repo_path)
+            if tracked:
+                return tracked[:40]
             files = sorted(
                 str(p.relative_to(self.repo_path))
                 for p in self.repo_path.rglob("*")
