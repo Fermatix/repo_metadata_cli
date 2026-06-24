@@ -10,24 +10,34 @@ from pathlib import Path
 from typing import Any
 
 from ..base_metric import BaseMetric, RepoContext
-from ..metric_utils import get_scc_file_stats
+from ..metric_utils import get_lang_code_no_autogen, get_scc_file_stats
 
 
 def _lang_distribution(ctx: RepoContext) -> dict[str, float]:
-    """Language → fraction of Code lines ≥ 1% (excl node_modules/vendor).
+    """Language → fraction of hand-written Code lines ≥ 1%.
+
+    Counts scc Code lines per language excluding dependency dirs
+    (node_modules/vendor) AND auto-generated files (committed bundles, minified
+    assets, generated stubs). This keeps primary_language anchored to the code a
+    human actually wrote: a TypeScript app shipping a large committed
+    ``app.bundle.js`` is reported as TypeScript, not JavaScript.
 
     Cached on the context so PrimaryLanguageMetric (L) and LangDistributionMetric (M)
     stay consistent — primary_language is always the max key of this distribution.
     """
     def _compute() -> dict[str, float]:
-        langs = ctx.scc_stats_no_deps.get("languages", [])
-        total_code = ctx.scc_stats_no_deps["total"]["code"]
-        if total_code == 0 or not langs:
+        per_lang = get_lang_code_no_autogen(
+            ctx.repo_path,
+            autogen_dirs=set(ctx.settings.metrics.autogen_dirs),
+            exclude_dirs=list(ctx.settings.metrics.scc_exclude_dirs),
+        )
+        total_code = sum(per_lang.values())
+        if total_code == 0:
             return {}
         return {
-            l["name"]: round(l["code"] / total_code, 6)
-            for l in langs
-            if l["code"] / total_code >= 0.01
+            name: round(code / total_code, 6)
+            for name, code in per_lang.items()
+            if code / total_code >= 0.01
         }
 
     return ctx._cached("lang_distribution", _compute)
