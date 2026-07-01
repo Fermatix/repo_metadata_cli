@@ -1,4 +1,9 @@
-"""Columns N, O, P, Q — commit count, contributors_count, PR counts."""
+"""Columns N, O, P, Q, AF, AH — commit/contributor/PR/branch/created-at metrics.
+
+These are VCS-agnostic *column* definitions: each delegates the actual history
+read to ``ctx.vcs`` (git or mercurial).  The module name is kept as ``git`` for
+import stability (tests and metrics/__init__.py reference it).
+"""
 
 from __future__ import annotations
 
@@ -6,8 +11,6 @@ import logging
 from typing import Any
 
 from ..base_metric import BaseMetric, RepoContext
-from ..metric_utils import count_pull_requests
-from ..utils import run_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -19,13 +22,13 @@ _BOT_NAMES = frozenset({
 
 
 class CommitCountMetric(BaseMetric):
-    """N: Total commit count across all branches (including merges)."""
+    """N: Total commit count across all branches, including merge commits."""
 
     column = "N"
     field_name = "commit_count"
 
     def compute(self, ctx: RepoContext) -> Any:
-        return len(ctx.git_log_no_merges)
+        return ctx._cached("commit_count", lambda: ctx.vcs.commit_count(ctx.repo_path))
 
 
 class ContributorsMetric(BaseMetric):
@@ -35,19 +38,11 @@ class ContributorsMetric(BaseMetric):
     field_name = "contributors_count"
 
     def compute(self, ctx: RepoContext) -> Any:
-        out = run_cmd(["git", "shortlog", "-sn", "--no-merges", "--all"], cwd=ctx.repo_path)
-        if not out:
-            return 0
-        count = 0
-        for line in out.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            parts = line.split("\t", 1)
-            name = parts[1].lower() if len(parts) == 2 else ""
-            if not any(bot in name for bot in _BOT_NAMES):
-                count += 1
-        return count
+        names = ctx.vcs.author_names(ctx.repo_path)
+        return sum(
+            1 for name in names
+            if not any(bot in name.lower() for bot in _BOT_NAMES)
+        )
 
 
 class TotalPRMetric(BaseMetric):
@@ -68,7 +63,7 @@ class TotalPRMetric(BaseMetric):
         # we don't silently report 0 for active repos.
         if entry is not None and entry.get("total_pr", 0) > 0:
             return entry["total_pr"]
-        total, _ = ctx._cached("pr_counts", lambda: count_pull_requests(ctx.repo_path))
+        total, _ = ctx._cached("pr_counts", lambda: ctx.vcs.count_pull_requests(ctx.repo_path))
         return total
 
 
@@ -92,35 +87,16 @@ class ReviewedPRMetric(BaseMetric):
 class BranchCountMetric(BaseMetric):
     """AH: Number of distinct branches in the repository.
 
-    Counts unique branch names across both local heads and ``origin`` remote
-    branches (a bundle is materialized through the ``origin`` remote, so its
-    branches live under ``refs/remotes/origin/*``).  Deduplicating by name and
-    reading refs directly avoids the artifacts that inflated the old
-    ``git branch -a`` line count by a fixed +3: the detached-HEAD pseudo-entry,
-    the extra local branch ``git clone`` leaves behind, and the symbolic
-    ``origin/HEAD`` alias.
+    The VCS backend owns the counting: git deduplicates local heads and
+    ``origin`` remote branches (avoiding the detached-HEAD / clone-artifact
+    inflation of ``git branch -a``); mercurial counts named branches.
     """
 
     column = "AH"
     field_name = "branch_count"
 
-    _PREFIXES = ("refs/heads/", "refs/remotes/origin/")
-
     def compute(self, ctx: RepoContext) -> Any:
-        out = run_cmd(
-            ["git", "for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes/origin"],
-            cwd=ctx.repo_path,
-        )
-        names = set()
-        for line in out.splitlines():
-            ref = line.strip()
-            for prefix in self._PREFIXES:
-                if ref.startswith(prefix):
-                    name = ref[len(prefix):]
-                    if name and name != "HEAD":
-                        names.add(name)
-                    break
-        return len(names)
+        return ctx.vcs.branch_count(ctx.repo_path)
 
 
 class CreatedAtMetric(BaseMetric):
@@ -130,10 +106,7 @@ class CreatedAtMetric(BaseMetric):
     field_name = "created_at"
 
     def compute(self, ctx: RepoContext) -> Any:
-        return run_cmd(
-            ["git", "log", "HEAD", "--reverse", "--format=%ai", "--max-count=1"],
-            cwd=ctx.repo_path,
-        )
+        return ctx.vcs.created_at(ctx.repo_path)
 
 
 class FirstCommitHashMetric(BaseMetric):
@@ -149,9 +122,7 @@ class FirstCommitHashMetric(BaseMetric):
     field_name = "first_commit_hash"
 
     def compute(self, ctx: RepoContext) -> Any:
-        out = run_cmd(["git", "rev-list", "--max-parents=0", "HEAD"], cwd=ctx.repo_path)
-        roots = [h.strip() for h in (out or "").splitlines() if h.strip()]
-        return ",".join(roots)
+        return ",".join(ctx.vcs.root_commit_hashes(ctx.repo_path))
 
 
 class MetadataCommitHashMetric(BaseMetric):
@@ -161,7 +132,7 @@ class MetadataCommitHashMetric(BaseMetric):
     field_name = "metadata_commit_hash"
 
     def compute(self, ctx: RepoContext) -> Any:
-        return (run_cmd(["git", "rev-parse", "HEAD"], cwd=ctx.repo_path) or "").strip()
+        return ctx.vcs.head_commit_hash(ctx.repo_path)
 
 
 class MetadataBranchNameMetric(BaseMetric):
@@ -192,16 +163,12 @@ class EarlyCommitHashesMetric(BaseMetric):
     N = 10
 
     def compute(self, ctx: RepoContext) -> Any:
-        # `git log --reverse --max-count=N` returns the N *newest* commits
-        # oldest-first, not the first N — so list oldest-first and slice.
-        out = run_cmd(["git", "rev-list", "--reverse", "HEAD"], cwd=ctx.repo_path)
-        hashes = [h.strip() for h in (out or "").splitlines() if h.strip()]
-        return ",".join(hashes[: self.N])
+        return ",".join(ctx.vcs.early_commit_hashes(ctx.repo_path, self.N))
 
 
 # --- MinHash over the commit-hash set (Jaccard-based repo identity) ----------
 # Fixed universal-hash constants (deterministic, derived from the perm index) so
-# signatures are reproducible across repos and runs. Commit SHAs are already
+# signatures are reproducible across repos and runs. Commit hashes are already
 # uniformly random, so a linear hash a*x+b over a 64-bit prefix is plenty.
 _MINHASH_PERMS = 32
 _MASK64 = (1 << 64) - 1
@@ -232,8 +199,7 @@ class CommitMinhashMetric(BaseMetric):
     field_name = "commit_minhash"
 
     def compute(self, ctx: RepoContext) -> Any:
-        out = run_cmd(["git", "rev-list", "--all"], cwd=ctx.repo_path)
-        xs = [int(h[:16], 16) for h in (out or "").split() if len(h) >= 16]
+        xs = [int(h[:16], 16) for h in ctx.vcs.all_commit_hashes(ctx.repo_path) if len(h) >= 16]
         if not xs:
             return ""
         sig = [min((a * x + b) & _MASK64 for x in xs) for a, b in _MINHASH_AB]

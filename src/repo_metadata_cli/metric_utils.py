@@ -94,6 +94,18 @@ def _parse_scc_output(out: str) -> dict:
     return {"languages": languages, "total": total}
 
 
+# VCS metadata dirs must always be excluded from scc.  Passing --exclude-dir at
+# all REPLACES scc's built-in default (.git,.hg,.svn), so once the caller adds
+# dependency dirs, scc would otherwise start counting .hg/.git internals — which
+# made hg repos diverge from git on identical trees.  Always prepend them.
+_SCC_VCS_DIRS: List[str] = [".git", ".hg", ".svn"]
+
+
+def _scc_exclude_arg(exclude_dirs: Optional[List[str]]) -> List[str]:
+    merged = list(dict.fromkeys(_SCC_VCS_DIRS + list(exclude_dirs or [])))
+    return ["--exclude-dir", ",".join(merged)]
+
+
 def get_scc_stats(
     repo_dir: Path,
     exclude_dirs: Optional[List[str]] = None,
@@ -101,11 +113,11 @@ def get_scc_stats(
     """Run `scc --format json` and return parsed language statistics.
 
     Pass `exclude_dirs` to skip dependency/build directories (Logical LOC mode).
-    Returns empty stats if scc is not installed.
+    VCS metadata dirs (.git/.hg/.svn) are always excluded.  Returns empty stats
+    if scc is not installed.
     """
     cmd = ["scc", "--format", "json", "--no-complexity"]
-    if exclude_dirs:
-        cmd += ["--exclude-dir", ",".join(exclude_dirs)]
+    cmd += _scc_exclude_arg(exclude_dirs)
     cmd.append(str(repo_dir))
     return _parse_scc_output(run_cmd(cmd) or "")
 
@@ -205,8 +217,7 @@ def get_scc_file_stats(
     unavailable.
     """
     cmd = ["scc", "--format", "json", "--by-file", "--no-complexity"]
-    if exclude_dirs:
-        cmd += ["--exclude-dir", ",".join(exclude_dirs)]
+    cmd += _scc_exclude_arg(exclude_dirs)
     cmd.append(str(repo_dir))
     out = run_cmd(cmd)
     if not out:
@@ -320,15 +331,20 @@ def get_dep_dir_loc(repo_dir: Path, dep_dir_names: Optional[Set[str]] = None) ->
     Pass `dep_dir_names` to override the default set of dependency directories.
     """
     _names = dep_dir_names if dep_dir_names is not None else _DEP_DIR_NAMES
-    dep_paths = [repo_dir / name for name in _names if (repo_dir / name).is_dir()]
-    if not dep_paths:
-        return 0
+    # Count dependency LOC the SAME way logical_loc (G) excludes it: scc's
+    # --exclude-dir matches a dir name at ANY depth, so AE must too — summing
+    # only root-level dep dirs lost nested vendor/node_modules and broke the
+    # invariant AE == (LOC dropped from G because of dep dirs).
+    file_stats = get_scc_file_stats(repo_dir)  # full tree (VCS dirs already excluded)
     total = 0
-    for dep_path in dep_paths:
-        out = run_cmd(["scc", "--format", "json", "--no-complexity", str(dep_path)], timeout=120)
-        if out:
-            stats: Dict[str, Any] = _parse_scc_output(out)
-            total += int(stats["total"]["code"])
+    for entry in file_stats:
+        path = Path(entry["path"])
+        try:
+            rel_parts = path.relative_to(repo_dir).parts
+        except ValueError:
+            rel_parts = path.parts
+        if any(part in _names for part in rel_parts[:-1]):
+            total += int(entry["code"])
     return total
 
 
@@ -341,6 +357,9 @@ def run_jscpd(repo_dir: Path) -> float:
     with tempfile.TemporaryDirectory() as tmpdir:
         report_dir = Path(tmpdir)
         ignore_pattern = ",".join([
+            # VCS metadata — otherwise jscpd scans .hg revlog data (detected as
+            # "D" source) and Mercurial repos diverge from git on identical code.
+            "**/.git/**", "**/.hg/**", "**/.svn/**",
             # Directory-based autogen
             "**/vendor/**", "**/node_modules/**", "**/dist/**", "**/build/**",
             "**/__generated__/**", "**/migrations/**", "**/generated/**",
@@ -511,23 +530,33 @@ def _read_ci_content(repo_dir: Path) -> str:
     return "\n".join(parts)
 
 
+# Deploy keywords matched at a word boundary so "ship" no longer fires inside
+# "ownership"/"membership"/"relationship"/"township" (\b before "ship" is absent
+# in those words).  \w* lets it still catch deploy/deployment, shipped/shipping…
+_DEPLOY_KW_RE: re.Pattern = re.compile(r"\b(?:deploy|release|publish|ship)\w*", re.IGNORECASE)
+
+
+def _nonvendor_rglob(repo_dir: Path, pattern: str) -> List[Path]:
+    """rglob results excluding vendored/third-party paths (node_modules, vendor…)."""
+    return [p for p in repo_dir.rglob(pattern) if not _is_vendor_path(p, repo_dir)]
+
+
 def detect_deployment_infra(repo_dir: Path) -> str:
     """Return one of: None / Basic CI / Full CI-CD / Enterprise."""
     enterprise_checks = [
-        lambda: bool(list(repo_dir.rglob("*.tf"))),
-        lambda: bool(list(repo_dir.rglob("Chart.yaml"))),
-        lambda: bool(list(repo_dir.rglob("deployment.yaml"))),
+        lambda: bool(_nonvendor_rglob(repo_dir, "*.tf")),
+        lambda: bool(_nonvendor_rglob(repo_dir, "Chart.yaml")),
+        lambda: bool(_nonvendor_rglob(repo_dir, "deployment.yaml")),
         lambda: (repo_dir / "k8s").is_dir() or (repo_dir / "kubernetes").is_dir(),
-        lambda: bool(list(repo_dir.rglob("*.k8s.yml"))),
-        lambda: bool(list(repo_dir.rglob("*.k8s.yaml"))),
+        lambda: bool(_nonvendor_rglob(repo_dir, "*.k8s.yml")),
+        lambda: bool(_nonvendor_rglob(repo_dir, "*.k8s.yaml")),
     ]
     if any(fn() for fn in enterprise_checks):
         return "Enterprise"
 
     if detect_ci_config(repo_dir):
-        deploy_kws = {"deploy", "release", "publish", "ship"}
         ci_content = _read_ci_content(repo_dir)
-        if any(kw in ci_content for kw in deploy_kws):
+        if _DEPLOY_KW_RE.search(ci_content):
             return "Full CI-CD"
         return "Basic CI"
 
@@ -541,7 +570,7 @@ def detect_deployment_infra(repo_dir: Path) -> str:
 # Only search in source code files — not CI configs, package.json, etc.
 # This avoids false positives from CI pipelines referencing monitoring tools.
 _MONITORING_SOURCE_EXTS: Set[str] = {
-    ".py", ".js", ".ts", ".go", ".java", ".cs", ".rb", ".php", ".rs",
+    ".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".java", ".cs", ".rb", ".php", ".rs",
 }
 
 # Word-boundary regex patterns for APM tool detection (prevents false positives from
@@ -650,6 +679,8 @@ _TEST_PATTERNS: List[str] = [
     "test_*.py", "*_test.py", "*_test.go", "*.spec.ts", "*.spec.js",
     "*.test.ts", "*.test.js", "*Test.java", "*Spec.java", "*_test.rb",
     "*_spec.rb", "*_test.rs", "*_test.cs", "*Test.cs",
+    # React/TSX/JSX conventions
+    "*.test.tsx", "*.spec.tsx", "*.test.jsx", "*.spec.jsx",
 ]
 
 # Compiled-language files require test framework markers in their content.
@@ -696,12 +727,23 @@ def _is_real_test_file(path: Path) -> bool:
 
 def detect_test_suite(repo_dir: Path) -> str:
     """Return one of: None / Basic / Comprehensive."""
-    test_files: List[Path] = []
+    # Use a set keyed on resolved path: _TEST_PATTERNS overlap (e.g. test_*.py and
+    # *_test.py both match test_x_test.py), and without dedup a single file was
+    # counted twice, inflating the >=10 "Comprehensive" threshold.
+    seen: Set[Path] = set()
     for pattern in _TEST_PATTERNS:
         for f in repo_dir.rglob(pattern):
-            if ".git" not in f.parts and _is_real_test_file(f):
-                test_files.append(f)
+            if ".git" in f.parts or ".hg" in f.parts:
+                continue
+            key = f.resolve()
+            if key not in seen and _is_real_test_file(f):
+                seen.add(key)
+    # Also recognise files inside a __tests__/ directory (common JS/TS convention).
+    for f in repo_dir.rglob("__tests__/*"):
+        if f.is_file() and ".git" not in f.parts and ".hg" not in f.parts:
+            seen.add(f.resolve())
 
+    test_files: List[Path] = list(seen)
     if not test_files:
         has_config = any((repo_dir / cfg).exists() for cfg in _TEST_CONFIG_FILES)
         return "Basic" if has_config else "None"
@@ -718,18 +760,21 @@ def detect_test_suite(repo_dir: Path) -> str:
 
 def detect_containerized(repo_dir: Path) -> str:
     """Return Yes or No."""
-    container_files = ["Dockerfile", "docker-compose.yml", "docker-compose.yaml", ".dockerignore"]
+    container_files = [
+        "Dockerfile", "docker-compose.yml", "docker-compose.yaml", ".dockerignore",
+        "compose.yml", "compose.yaml", "Containerfile",  # Compose v2 / Podman
+    ]
     if any((repo_dir / f).exists() for f in container_files):
         return "Yes"
-    if list(repo_dir.rglob("*.k8s.yml")) or list(repo_dir.rglob("*.k8s.yaml")):
+    if _nonvendor_rglob(repo_dir, "*.k8s.yml") or _nonvendor_rglob(repo_dir, "*.k8s.yaml"):
         return "Yes"
     for dir_name in ("deploy", "infra", "k8s", "kubernetes", "docker"):
         d = repo_dir / dir_name
         if d.is_dir() and (list(d.rglob("*.yml")) or list(d.rglob("*.yaml"))):
             return "Yes"
-    if list(repo_dir.rglob("Chart.yaml")):
+    if _nonvendor_rglob(repo_dir, "Chart.yaml"):
         return "Yes"
-    if list(repo_dir.rglob("Dockerfile")):
+    if _nonvendor_rglob(repo_dir, "Dockerfile"):
         return "Yes"
     return "No"
 
@@ -877,14 +922,29 @@ def get_dir_size_mb(path: Path) -> float:
 # Issue tracker (column Z)
 # ---------------------------------------------------------------------------
 
+# The JIRA/Linear-key alternatives MUST be case-sensitive: a global re.IGNORECASE
+# let "[A-Z]{2,10}-\d+" match lowercase tokens like "react-18", "utf-8",
+# "python-3", "sha-256", flagging ordinary commits as issue-linked.  Only the
+# action verbs are case-insensitive (inline (?i:...)); project keys stay uppercase.
 _ISSUE_PATTERN: re.Pattern = re.compile(
-    r"(?:fixes?|closes?|resolves?)\s+#\d+|#\d+\b|JIRA-\w+|LINEAR-\w+|[A-Z]{2,10}-\d+",
-    re.IGNORECASE,
+    r"(?i:(?:fixes?|closes?|resolves?)\s+#\d+)"
+    r"|#\d+\b"
+    r"|\bJIRA-\w+"
+    r"|\bLINEAR-\w+"
+    r"|\b[A-Z]{2,10}-\d+\b",
 )
 
 
-def detect_issue_tracker(repo_dir: Path) -> str:
-    """Return one of: None / Basic / Linked to Commits / Full+Design Docs."""
+def detect_issue_tracker(repo_dir: Path, vcs=None) -> str:
+    """Return one of: None / Basic / Linked to Commits / Full+Design Docs.
+
+    ``vcs`` supplies recent commit subjects (git or mercurial).  When omitted, a
+    GitVCS backend is used so existing callers/tests keep their git behaviour.
+    """
+    if vcs is None:
+        from .vcs.git import GitVCS  # late import: avoid cycle
+        vcs = GitVCS()
+
     has_design_docs = any([
         (repo_dir / "docs" / "rfcs").is_dir(),
         (repo_dir / "docs" / "adr").is_dir(),
@@ -892,11 +952,8 @@ def detect_issue_tracker(repo_dir: Path) -> str:
         (repo_dir / "adr").is_dir(),
     ])
 
-    git_log = run_cmd(
-        ["git", "log", "--all", "--no-merges", "--format=%s", "-n", "200"],
-        cwd=repo_dir,
-    )
-    has_issue_refs = bool(_ISSUE_PATTERN.search(git_log))
+    subjects = vcs.recent_commit_subjects(repo_dir, limit=200)
+    has_issue_refs = bool(_ISSUE_PATTERN.search(subjects))
 
     if has_issue_refs:
         return "Full+Design Docs" if has_design_docs else "Linked to Commits"

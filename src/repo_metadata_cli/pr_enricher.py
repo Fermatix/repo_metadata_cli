@@ -38,20 +38,33 @@ _GITHUB_BATCH_SIZE = 20
 # Merged PRs fetched per repo per page.  Higher = fewer round-trips but
 # more expensive queries.
 _PR_PAGE_SIZE = 100
-# Maximum pages of PRs per repo (capped to avoid unbounded runtime).
-_MAX_PR_PAGES = 10
+# Maximum pages of PRs per repo (safety bound against unbounded runtime).
+# 100 pages × 100 = 10 000 items.  When the cap is hit we LOG a warning so the
+# truncation is never silent (GitLab total_pr is taken from the X-Total header,
+# so it stays exact even beyond this cap).
+_MAX_PR_PAGES = 100
 
 _RETRY_STATUSES = {429, 500, 502, 503, 504}
 _MAX_RETRIES = 5
 
 
 def _repo_only_name(url: str) -> str:
-    """Return the last path segment of a repo URL, sanitised (mirrors fetch script)."""
+    """Return the last path segment of a repo URL, sanitised (mirrors fetch script).
+
+    Must stay byte-identical to partner.bundle_stem_from_url and the bash
+    repo_only_name so the pr_cache key matches ctx.bundle_name; otherwise P/Q
+    cache lookups silently miss.
+    """
     url = url.strip().rstrip("/").removesuffix(".git")
     segment = url.split("/")[-1]
     segment = re.sub(r"[^A-Za-z0-9.\-]", "-", segment)
     segment = re.sub(r"-+", "-", segment).strip("-.")
-    return segment or "repo"
+    segment = segment or "repo"
+    # Same trailing guard the other two implementations apply (e.g. bar.atom ->
+    # bar.atom-repo, repo.git.git -> repo.git-repo).
+    if segment.endswith(".git") or segment.endswith(".atom"):
+        segment = f"{segment}-repo"
+    return segment
 
 
 def _parse_github_owner_repo(url: str) -> Optional[Tuple[str, str]]:
@@ -231,6 +244,12 @@ def _fetch_additional_pages_github(
         if not page_info.get("hasNextPage"):
             break
         cursor = page_info["endCursor"]
+    else:
+        # Loop exhausted the page cap without seeing the last page.
+        logger.warning(
+            "GitHub %s/%s: hit the %d-page cap; reviewed_pr may be undercounted.",
+            owner, repo, _MAX_PR_PAGES,
+        )
     return reviewed
 
 
@@ -244,9 +263,13 @@ def fetch_github_batch(
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
-    # Skip repos already in cache
+    # Skip repos already cached with a non-zero count; retry zero/absent ones.
+    def _cached_ok(stem: str) -> bool:
+        entry = existing_cache.get(stem)
+        return entry is not None and entry.get("total_pr", 0) > 0
+
     to_fetch = [(stem, owner, name) for stem, owner, name in repos
-                if stem not in existing_cache]
+                if not _cached_ok(stem)]
     if not to_fetch:
         return {}
 
@@ -302,6 +325,33 @@ def fetch_github_batch(
 # GitLab REST API
 # ---------------------------------------------------------------------------
 
+def _gitlab_total_count(base_url: str, encoded: str, headers: dict) -> Optional[int]:
+    """Exact merged-MR count from GitLab's ``X-Total`` header (one cheap request).
+
+    Returns None when the header is absent (GitLab omits it for very large or
+    keyset-paginated collections) so the caller can fall back to pagination.
+    """
+    import requests
+
+    try:
+        resp = requests.get(
+            f"{base_url}/projects/{encoded}/merge_requests",
+            headers=headers,
+            params={"state": "merged", "per_page": 1, "page": 1,
+                    "with_merge_status_recheck": "false"},
+            timeout=30,
+        )
+        resp.raise_for_status()
+    except Exception as exc:  # noqa: BLE001 — best-effort; pagination is the fallback
+        logger.debug("GitLab X-Total lookup failed for %s: %s", encoded, exc)
+        return None
+    total = resp.headers.get("X-Total")
+    try:
+        return int(total) if total is not None else None
+    except ValueError:
+        return None
+
+
 def fetch_gitlab_repo(
     bundle_stem: str,
     project_path: str,
@@ -311,8 +361,9 @@ def fetch_gitlab_repo(
     """Fetch total and reviewed MR count for one GitLab project.
 
     project_path may contain '/' or '%2F' separators — both are handled.
-    total_pr is accumulated across all paginated pages (not from X-Total header
-    which is unavailable without access to raw HTTP headers).
+    total_pr comes from the exact ``X-Total`` header when available (so it is not
+    capped by pagination); reviewed_pr is accumulated by paging up to
+    _MAX_PR_PAGES, with a warning when the cap is reached.
     """
     headers = {"PRIVATE-TOKEN": token, "Content-Type": "application/json"}
     # Normalise: decode any existing %2F then re-encode so the path is uniform.
@@ -321,9 +372,12 @@ def fetch_gitlab_repo(
 
     logger.info("GitLab fetching MRs for %s (encoded: %s)", decoded_path, encoded)
 
-    total_mr = 0
+    exact_total = _gitlab_total_count(base_url, encoded, headers)
+
+    paged_total = 0
     reviewed = 0
     page = 1
+    truncated = True  # set False when we exhaust the list before the page cap
 
     for _ in range(_MAX_PR_PAGES):
         try:
@@ -340,14 +394,16 @@ def fetch_gitlab_repo(
         except Exception as exc:
             logger.warning("GitLab MR list failed for %s page %d: %s",
                            decoded_path, page, exc)
-            if page == 1:
+            if page == 1 and exact_total is None:
                 return None
+            truncated = False
             break
 
         if not isinstance(mrs, list) or not mrs:
+            truncated = False
             break
 
-        total_mr += len(mrs)
+        paged_total += len(mrs)
 
         for mr in mrs:
             # GitLab 13.8+ (EE/gitlab.com) includes `reviewers` in the MR list
@@ -358,9 +414,17 @@ def fetch_gitlab_repo(
                 reviewed += 1
 
         if len(mrs) < _PR_PAGE_SIZE:
+            truncated = False
             break
         page += 1
 
+    if truncated:
+        logger.warning(
+            "GitLab %s: hit the %d-page cap (%d MRs scanned); reviewed_pr may be undercounted.",
+            decoded_path, _MAX_PR_PAGES, paged_total,
+        )
+
+    total_mr = exact_total if exact_total is not None else paged_total
     logger.info("GitLab %s: total_mr=%d reviewed_pr=%d", decoded_path, total_mr, reviewed)
     parsed_base = urlparse(base_url)
     instance_url = f"{parsed_base.scheme}://{parsed_base.netloc}"
@@ -428,7 +492,11 @@ def enrich_pr_cache(
             # bundles available, try to find the *original* project path from
             # the bundle's merge-commit history.
             cached_entry = existing.get(stem)
-            needs_resolve = bundles_dir and cached_entry is None
+            # Resolve the original path for absent OR zero-count entries, so a
+            # re-run with --bundles-dir corrects previously failed/empty lookups.
+            needs_resolve = bool(bundles_dir) and (
+                cached_entry is None or cached_entry.get("total_pr", 0) == 0
+            )
             if needs_resolve:
                 bundle_path = _find_bundle(bundles_dir, stem)
                 if bundle_path:
@@ -458,13 +526,17 @@ def enrich_pr_cache(
         logger.warning("GitHub repos found but GITHUB_TOKEN not provided — skipping")
 
     # ---- GitLab ----
+    def _gl_cached_ok(stem: str) -> bool:
+        entry = cache.get(stem)
+        return entry is not None and entry.get("total_pr", 0) > 0
+
     if gitlab_list and gitlab_token:
-        todo = sum(1 for s, _ in gitlab_list if s not in cache)
+        todo = sum(1 for s, _ in gitlab_list if not _gl_cached_ok(s))
         skip = len(gitlab_list) - todo
         logger.info("GitLab: %d repos (%d cached, %d to fetch)", len(gitlab_list), skip, todo)
         for stem, path in gitlab_list:
-            if stem in cache:
-                continue  # already cached
+            if _gl_cached_ok(stem):
+                continue  # only skip non-zero cached entries; retry zeros
             result = fetch_gitlab_repo(stem, path, gitlab_token, gitlab_base_url)
             # Always cache, even on 404/failure — prevents infinite retries
             cache[stem] = result or {"total_pr": 0, "reviewed_pr": 0, "url": path}
