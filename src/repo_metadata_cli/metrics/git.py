@@ -176,3 +176,65 @@ class MetadataBranchNameMetric(BaseMetric):
 
     def compute(self, ctx: RepoContext) -> Any:
         return getattr(ctx, "metadata_branch", None) or ""
+
+
+class EarlyCommitHashesMetric(BaseMetric):
+    """AT: The first N commit hashes (oldest-first) of the collected branch.
+
+    Disambiguates repos that share a root commit (forks/templates) but diverge
+    early: the beginning of history is fixed, so these hashes are stable across
+    re-collections yet differ between forks. Comma-joined; fewer than N for short
+    histories, empty for an empty repo.
+    """
+
+    column = "AT"
+    field_name = "early_commit_hashes"
+    N = 10
+
+    def compute(self, ctx: RepoContext) -> Any:
+        # `git log --reverse --max-count=N` returns the N *newest* commits
+        # oldest-first, not the first N — so list oldest-first and slice.
+        out = run_cmd(["git", "rev-list", "--reverse", "HEAD"], cwd=ctx.repo_path)
+        hashes = [h.strip() for h in (out or "").splitlines() if h.strip()]
+        return ",".join(hashes[: self.N])
+
+
+# --- MinHash over the commit-hash set (Jaccard-based repo identity) ----------
+# Fixed universal-hash constants (deterministic, derived from the perm index) so
+# signatures are reproducible across repos and runs. Commit SHAs are already
+# uniformly random, so a linear hash a*x+b over a 64-bit prefix is plenty.
+_MINHASH_PERMS = 32
+_MASK64 = (1 << 64) - 1
+
+
+def _minhash_consts(i: int) -> tuple[int, int]:
+    import hashlib
+
+    d = hashlib.blake2b(str(i).encode(), digest_size=16).digest()
+    a = int.from_bytes(d[:8], "big") | 1  # must be odd
+    b = int.from_bytes(d[8:], "big")
+    return a, b
+
+
+_MINHASH_AB = [_minhash_consts(i) for i in range(_MINHASH_PERMS)]
+
+
+class CommitMinhashMetric(BaseMetric):
+    """AU: MinHash signature over ALL commit hashes (across refs).
+
+    Enables Jaccard-similarity matching of a re-collected repo to its prior
+    metadata even as HEAD advances (same repo -> nearly identical commit set ->
+    high signature agreement; forks/unrelated -> low). 32 perms, hex-joined;
+    empty for an empty repo.
+    """
+
+    column = "AU"
+    field_name = "commit_minhash"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        out = run_cmd(["git", "rev-list", "--all"], cwd=ctx.repo_path)
+        xs = [int(h[:16], 16) for h in (out or "").split() if len(h) >= 16]
+        if not xs:
+            return ""
+        sig = [min((a * x + b) & _MASK64 for x in xs) for a, b in _MINHASH_AB]
+        return ",".join(format(s, "016x") for s in sig)

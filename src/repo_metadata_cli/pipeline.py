@@ -22,10 +22,12 @@ from .metrics import (  # metrics/ package — all metric classes via __init__.p
     DepDirLocMetric,
     CIChecksMetric,
     CommitCountMetric,
+    CommitMinhashMetric,
     ContainerizedMetric,
     ContributorsMetric,
     CreatedAtMetric,
     DatasetIdMetric,
+    EarlyCommitHashesMetric,
     DatasetNameMetric,
     DeploymentMetric,
     DescriptionMetric,
@@ -113,6 +115,8 @@ METRICS: list[Type[BaseMetric]] = [
     FirstCommitHashMetric,     # AQ
     MetadataCommitHashMetric,  # AR
     MetadataBranchNameMetric,  # AS
+    EarlyCommitHashesMetric,   # AT
+    CommitMinhashMetric,       # AU
 ]
 
 # Empty placeholder columns per spec.
