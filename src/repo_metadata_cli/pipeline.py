@@ -20,10 +20,12 @@ from .metrics import (  # metrics/ package — all metric classes via __init__.p
     DepDirLocMetric,
     CIChecksMetric,
     CommitCountMetric,
+    CommitMinhashMetric,
     ContainerizedMetric,
     ContributorsMetric,
     CreatedAtMetric,
     DatasetIdMetric,
+    EarlyCommitHashesMetric,
     DatasetNameMetric,
     DeploymentMetric,
     DescriptionMetric,
@@ -31,6 +33,7 @@ from .metrics import (  # metrics/ package — all metric classes via __init__.p
     DocumentationCountMetric,
     DuplicationMetric,
     ExtensionsMetric,
+    FirstCommitHashMetric,
     ForkPctMetric,
     GitHistoryMbMetric,
     HoldoutMetric,
@@ -38,6 +41,8 @@ from .metrics import (  # metrics/ package — all metric classes via __init__.p
     LangDistributionMetric,
     LicenseTypeMetric,
     LogicalLocMetric,
+    MetadataBranchNameMetric,
+    MetadataCommitHashMetric,
     MonitoringMetric,
     NumReposMetric,
     PrimaryLanguageMetric,
@@ -105,6 +110,12 @@ METRICS: list[Type[BaseMetric]] = [
     DocumentationCountMetric,# AN
     CommentRatioMetric,      # AO
     SymbolsCountMetric,      # AP
+    # git identity / provenance fingerprint (cross-recollection matching)
+    FirstCommitHashMetric,     # AQ
+    MetadataCommitHashMetric,  # AR
+    MetadataBranchNameMetric,  # AS
+    EarlyCommitHashesMetric,   # AT
+    CommitMinhashMetric,       # AU
 ]
 
 # Empty placeholder columns per spec.
@@ -154,6 +165,22 @@ def latest_branch_by_commit(repo_dir: Path) -> Optional[str]:
     return GitVCS().latest_branch(repo_dir)
 
 
+def _short_branch(ref: Optional[str]) -> str:
+    """Normalize a full ref (refs/heads/x, refs/remotes/origin/x) to a branch name.
+
+    Returns "HEAD" for a bare commit-hash fallback (repo with no branch refs).
+    """
+    if not ref:
+        return ""
+    if ref.startswith("refs/heads/"):
+        return ref[len("refs/heads/"):]
+    if ref.startswith("refs/remotes/"):
+        rest = ref[len("refs/remotes/"):]
+        parts = rest.split("/", 1)  # drop the remote name (origin/…)
+        return parts[1] if len(parts) == 2 else parts[0]
+    return "HEAD"
+
+
 def checkout_ref(repo_dir: Path, ref: str) -> bool:
     return GitVCS().checkout(repo_dir, ref)
 
@@ -178,6 +205,7 @@ def build_repo_context(
         tree_sitter=ts_manager,
         allowed_files=allowed_files,
         bundle_path=bundle_path,
+        metadata_branch=_short_branch(branch_ref),
         vcs=vcs,
     )
 
@@ -188,11 +216,23 @@ def build_local_repo_context(
     allowed_files: AllowedFiles,
     ts_manager: Optional[TreeSitterManager],
 ) -> RepoContext:
+    # LOCAL PATCH: when the directory is a real git repo, select the branch with
+    # the most recent commit (same rule as bundle mode) and check it out in
+    # place, so LOC/git metrics are computed on the latest-commit branch rather
+    # than whatever HEAD happens to be checked out. No-op for non-git folders.
+    branch_ref: Optional[str] = None
+    if (local_path / ".git").exists():
+        branch_ref = latest_branch_by_commit(local_path)
+        if branch_ref and not checkout_ref(local_path, branch_ref):
+            logger.debug(
+                "Failed to checkout %s in %s; staying on HEAD", branch_ref, local_path
+            )
     return RepoContext(
         repo_path=local_path,
         settings=settings,
         tree_sitter=ts_manager,
         allowed_files=allowed_files,
+        metadata_branch=_short_branch(branch_ref),
     )
 
 
@@ -221,6 +261,11 @@ def _processed_repos(csv_path: Path) -> Set[str]:
             f"{org}\t{name}"
             for org, name in zip(df["repo_org"].astype(str), df["repo_name"].astype(str))
         }
+        # LOCAL PATCH: also index by bare repo_name so directory/local-mode runs
+        # (where the dedup key's org segment is empty but the CSV's repo_org is
+        # populated from the git remote) still resume via the `stem in processed`
+        # fallback instead of re-appending every already-processed repo.
+        processed |= set(df["repo_name"].astype(str))
     else:
         processed = set(df["repo_name"].astype(str))
     logger.info("%s already contains %d repositories.", csv_path, len(processed))
