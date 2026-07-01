@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional
 from .allowed_files import AllowedFiles
 from .settings import AppSettings
 from .tree_sitter_support import TreeSitterManager
+from .utils import run_cmd  # used by the repo_org property (local-mode git remote)
 
 if TYPE_CHECKING:
     from .vcs.base import BaseVCS
