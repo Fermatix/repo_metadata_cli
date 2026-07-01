@@ -134,3 +134,45 @@ class CreatedAtMetric(BaseMetric):
             ["git", "log", "HEAD", "--reverse", "--format=%ai", "--max-count=1"],
             cwd=ctx.repo_path,
         )
+
+
+class FirstCommitHashMetric(BaseMetric):
+    """AQ: Root commit hash(es) — the parentless commit(s) of the history.
+
+    Stable across re-collections (the root SHA never changes unless history is
+    rewritten), so it serves as a cross-run identity fingerprint for matching a
+    re-collected repo to its previous metadata. Comma-joined when a repo has
+    multiple root commits (merged unrelated histories); empty for an empty repo.
+    """
+
+    column = "AQ"
+    field_name = "first_commit_hash"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        out = run_cmd(["git", "rev-list", "--max-parents=0", "HEAD"], cwd=ctx.repo_path)
+        roots = [h.strip() for h in (out or "").splitlines() if h.strip()]
+        return ",".join(roots)
+
+
+class MetadataCommitHashMetric(BaseMetric):
+    """AR: The commit HEAD pointed at when this metadata was collected."""
+
+    column = "AR"
+    field_name = "metadata_commit_hash"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return (run_cmd(["git", "rev-parse", "HEAD"], cwd=ctx.repo_path) or "").strip()
+
+
+class MetadataBranchNameMetric(BaseMetric):
+    """AS: The branch this metadata was collected from (latest-commit branch).
+
+    HEAD is checked out detached at that branch's tip, so the name is captured by
+    the pipeline at checkout time and stashed on the context.
+    """
+
+    column = "AS"
+    field_name = "metadata_branch_name"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return getattr(ctx, "metadata_branch", None) or ""

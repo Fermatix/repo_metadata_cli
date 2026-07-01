@@ -23,6 +23,9 @@ from .git import (
     CommitCountMetric,
     ContributorsMetric,
     CreatedAtMetric,
+    FirstCommitHashMetric,
+    MetadataBranchNameMetric,
+    MetadataCommitHashMetric,
     ReviewedPRMetric,
     TotalPRMetric,
 )
@@ -81,4 +84,8 @@ __all__ = [
     "DocumentationCountMetric",
     "CommentRatioMetric",
     "SymbolsCountMetric",
+    # git identity / provenance fingerprint (for cross-recollection matching)
+    "FirstCommitHashMetric",
+    "MetadataCommitHashMetric",
+    "MetadataBranchNameMetric",
 ]

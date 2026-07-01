@@ -25,6 +25,10 @@ class RepoContext:
     tree_sitter: Optional[TreeSitterManager]
     allowed_files: AllowedFiles
     bundle_path: Optional[Path] = None
+    # Short name of the branch selected for metadata collection (latest-commit
+    # branch). Set by the pipeline at checkout time; consumed by the
+    # metadata_branch_name metric (HEAD is detached, so it can't be read back).
+    metadata_branch: Optional[str] = None
     _cache: dict = field(default_factory=dict, repr=False)
 
     @property
@@ -47,9 +51,20 @@ class RepoContext:
     @property
     def repo_org(self) -> str:
         # When launched from a repos.txt URL list, org_map resolves the bundle
-        # to the full namespace path parsed from its source URL. Empty when the
-        # URL had no namespace or the run was not driven by a repos.txt list.
-        return self.settings.org_map.get(self.bundle_name, "")
+        # to the full namespace path parsed from its source URL.
+        mapped = self.settings.org_map.get(self.bundle_name)
+        if mapped:
+            return mapped
+        # LOCAL PATCH: in directory/local mode there is no URL list, so derive
+        # the org from the repo's `origin` git remote (same parser as the URL
+        # path) instead of leaving it empty.
+        if self.bundle_path is None:
+            def _compute() -> str:
+                from .partner import parse_repo_org  # late import avoids cycle
+                url = run_cmd(["git", "remote", "get-url", "origin"], cwd=self.repo_path)
+                return (parse_repo_org(url) or "") if url else ""
+            return self._cached("repo_org_remote", _compute)
+        return ""
 
     @property
     def repo_name(self) -> str:
