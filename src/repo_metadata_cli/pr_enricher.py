@@ -49,22 +49,16 @@ _MAX_RETRIES = 5
 
 
 def _repo_only_name(url: str) -> str:
-    """Return the last path segment of a repo URL, sanitised (mirrors fetch script).
+    """Bundle stem used as the pr_cache key.
 
-    Must stay byte-identical to partner.bundle_stem_from_url and the bash
-    repo_only_name so the pr_cache key matches ctx.bundle_name; otherwise P/Q
-    cache lookups silently miss.
+    Must equal ``ctx.bundle_name`` — the on-disk ``*.bundle`` stem — or P/Q cache
+    lookups silently miss. Since bundles are named by the FULL namespace path
+    (`partner.bundle_stem_from_url`, to avoid leaf collisions across groups), the
+    cache key is the same full-path stem. Delegate to the single source of truth
+    so the two can never drift again.
     """
-    url = url.strip().rstrip("/").removesuffix(".git")
-    segment = url.split("/")[-1]
-    segment = re.sub(r"[^A-Za-z0-9.\-]", "-", segment)
-    segment = re.sub(r"-+", "-", segment).strip("-.")
-    segment = segment or "repo"
-    # Same trailing guard the other two implementations apply (e.g. bar.atom ->
-    # bar.atom-repo, repo.git.git -> repo.git-repo).
-    if segment.endswith(".git") or segment.endswith(".atom"):
-        segment = f"{segment}-repo"
-    return segment
+    from .partner import bundle_stem_from_url  # local import: keep modules decoupled
+    return bundle_stem_from_url(url)
 
 
 def _parse_github_owner_repo(url: str) -> Optional[Tuple[str, str]]:

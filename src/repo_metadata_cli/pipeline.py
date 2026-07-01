@@ -344,6 +344,9 @@ def run_metadata_pipeline(
             row_df.to_csv(csv_path, mode="a", header=False, index=False)
         else:
             row_df.to_csv(csv_path, mode="w", header=True, index=False)
-        processed.add(repo_name)
+        # Mark done using the same identifiers the skip-check consults above, so a
+        # duplicate item within this run is not reprocessed.
+        processed.add(key)
+        processed.add(stem)
 
     logger.info("Metadata pipeline finished; %d repositories processed.", len(processed))
