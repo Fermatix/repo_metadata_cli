@@ -21,8 +21,10 @@ from .files import (
 from .git import (
     BranchCountMetric,
     CommitCountMetric,
+    CommitMinhashMetric,
     ContributorsMetric,
     CreatedAtMetric,
+    EarlyCommitHashesMetric,
     FirstCommitHashMetric,
     MetadataBranchNameMetric,
     MetadataCommitHashMetric,
@@ -88,4 +90,6 @@ __all__ = [
     "FirstCommitHashMetric",
     "MetadataCommitHashMetric",
     "MetadataBranchNameMetric",
+    "EarlyCommitHashesMetric",
+    "CommitMinhashMetric",
 ]
