@@ -171,3 +171,21 @@ class GitVCS(BaseVCS):
             ["git", "log", "--all", "--no-merges", "--format=%s", "-n", str(limit)],
             cwd=repo_path,
         )
+
+    # --- commit-hash provenance / identity fingerprints (cols AQ-AU) ---------
+    def root_commit_hashes(self, repo_path: Path) -> List[str]:
+        out = run_cmd(["git", "rev-list", "--max-parents=0", "HEAD"], cwd=repo_path)
+        return [h.strip() for h in out.splitlines() if h.strip()]
+
+    def early_commit_hashes(self, repo_path: Path, n: int) -> List[str]:
+        # `git log --reverse --max-count=n` yields the n *newest* commits
+        # oldest-first, not the first n — so list oldest-first and slice.
+        out = run_cmd(["git", "rev-list", "--reverse", "HEAD"], cwd=repo_path)
+        return [h.strip() for h in out.splitlines() if h.strip()][:n]
+
+    def head_commit_hash(self, repo_path: Path) -> str:
+        return (run_cmd(["git", "rev-parse", "HEAD"], cwd=repo_path) or "").strip()
+
+    def all_commit_hashes(self, repo_path: Path) -> List[str]:
+        out = run_cmd(["git", "rev-list", "--all"], cwd=repo_path)
+        return [h.strip() for h in out.split() if h.strip()]

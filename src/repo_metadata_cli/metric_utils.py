@@ -266,6 +266,63 @@ def get_auto_gen_loc(
     )
 
 
+def get_lang_code_no_autogen(
+    repo_dir: Path,
+    autogen_dirs: Optional[Set[str]] = None,
+    exclude_dirs: Optional[List[str]] = None,
+) -> Dict[str, int]:
+    """Per-language scc Code lines EXCLUDING auto-generated files.
+
+    Same `scc --by-file` invocation and autogen detection as ``get_auto_gen_loc``,
+    but aggregated per language over the NON-autogen files. Used so that
+    ``primary_language`` / ``lang_distribution`` reflect hand-written source —
+    a committed bundle, minified asset, or generated stub no longer decides the
+    primary language (e.g. a TypeScript app with a large committed ``.bundle.js``
+    is no longer reported as JavaScript). Returns {} if scc is unavailable.
+    """
+    _dirs = autogen_dirs if autogen_dirs is not None else _AUTOGEN_DIRS
+    cmd = ["scc", "--format", "json", "--by-file", "--no-complexity"]
+    if exclude_dirs:
+        cmd += ["--exclude-dir", ",".join(exclude_dirs)]
+    cmd.append(str(repo_dir))
+    out = run_cmd(cmd)
+    if not out:
+        return {}
+    try:
+        data = json.loads(out)
+    except json.JSONDecodeError:
+        start, end = out.find("["), out.rfind("]")
+        if start == -1 or end == -1:
+            return {}
+        try:
+            data = json.loads(out[start : end + 1])
+        except json.JSONDecodeError:
+            return {}
+    if not isinstance(data, list):
+        return {}
+    per_lang: Dict[str, int] = {}
+    for item in cast(List[Any], data):
+        if not isinstance(item, dict):
+            continue
+        lang_entry = cast(Dict[str, Any], item)
+        name = lang_entry.get("Name")
+        files_raw = lang_entry.get("Files")
+        if not name or not isinstance(files_raw, list):
+            continue
+        total = 0
+        for fitem in cast(List[Any], files_raw):
+            if not isinstance(fitem, dict):
+                continue
+            file_entry = cast(Dict[str, Any], fitem)
+            location = str(file_entry.get("Location") or "")
+            if not location or _is_autogen_file(Path(location), repo_dir, _dirs):
+                continue
+            total += int(file_entry.get("Code") or 0)
+        if total > 0:
+            per_lang[str(name)] = per_lang.get(str(name), 0) + total
+    return per_lang
+
+
 def get_dep_dir_loc(repo_dir: Path, dep_dir_names: Optional[Set[str]] = None) -> int:
     """Count scc Code lines in dependency directories (vendor/, node_modules/, bower_components/).
 

@@ -107,3 +107,100 @@ class CreatedAtMetric(BaseMetric):
 
     def compute(self, ctx: RepoContext) -> Any:
         return ctx.vcs.created_at(ctx.repo_path)
+
+
+class FirstCommitHashMetric(BaseMetric):
+    """AQ: Root commit hash(es) — the parentless commit(s) of the history.
+
+    Stable across re-collections (the root SHA never changes unless history is
+    rewritten), so it serves as a cross-run identity fingerprint for matching a
+    re-collected repo to its previous metadata. Comma-joined when a repo has
+    multiple root commits (merged unrelated histories); empty for an empty repo.
+    """
+
+    column = "AQ"
+    field_name = "first_commit_hash"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return ",".join(ctx.vcs.root_commit_hashes(ctx.repo_path))
+
+
+class MetadataCommitHashMetric(BaseMetric):
+    """AR: The commit HEAD pointed at when this metadata was collected."""
+
+    column = "AR"
+    field_name = "metadata_commit_hash"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return ctx.vcs.head_commit_hash(ctx.repo_path)
+
+
+class MetadataBranchNameMetric(BaseMetric):
+    """AS: The branch this metadata was collected from (latest-commit branch).
+
+    HEAD is checked out detached at that branch's tip, so the name is captured by
+    the pipeline at checkout time and stashed on the context.
+    """
+
+    column = "AS"
+    field_name = "metadata_branch_name"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return getattr(ctx, "metadata_branch", None) or ""
+
+
+class EarlyCommitHashesMetric(BaseMetric):
+    """AT: The first N commit hashes (oldest-first) of the collected branch.
+
+    Disambiguates repos that share a root commit (forks/templates) but diverge
+    early: the beginning of history is fixed, so these hashes are stable across
+    re-collections yet differ between forks. Comma-joined; fewer than N for short
+    histories, empty for an empty repo.
+    """
+
+    column = "AT"
+    field_name = "early_commit_hashes"
+    N = 10
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return ",".join(ctx.vcs.early_commit_hashes(ctx.repo_path, self.N))
+
+
+# --- MinHash over the commit-hash set (Jaccard-based repo identity) ----------
+# Fixed universal-hash constants (deterministic, derived from the perm index) so
+# signatures are reproducible across repos and runs. Commit hashes are already
+# uniformly random, so a linear hash a*x+b over a 64-bit prefix is plenty.
+_MINHASH_PERMS = 32
+_MASK64 = (1 << 64) - 1
+
+
+def _minhash_consts(i: int) -> tuple[int, int]:
+    import hashlib
+
+    d = hashlib.blake2b(str(i).encode(), digest_size=16).digest()
+    a = int.from_bytes(d[:8], "big") | 1  # must be odd
+    b = int.from_bytes(d[8:], "big")
+    return a, b
+
+
+_MINHASH_AB = [_minhash_consts(i) for i in range(_MINHASH_PERMS)]
+
+
+class CommitMinhashMetric(BaseMetric):
+    """AU: MinHash signature over ALL commit hashes (across refs).
+
+    Enables Jaccard-similarity matching of a re-collected repo to its prior
+    metadata even as HEAD advances (same repo -> nearly identical commit set ->
+    high signature agreement; forks/unrelated -> low). 32 perms, hex-joined;
+    empty for an empty repo.
+    """
+
+    column = "AU"
+    field_name = "commit_minhash"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        xs = [int(h[:16], 16) for h in ctx.vcs.all_commit_hashes(ctx.repo_path) if len(h) >= 16]
+        if not xs:
+            return ""
+        sig = [min((a * x + b) & _MASK64 for x in xs) for a, b in _MINHASH_AB]
+        return ",".join(format(s, "016x") for s in sig)

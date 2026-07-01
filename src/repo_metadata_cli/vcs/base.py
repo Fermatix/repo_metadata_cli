@@ -88,3 +88,22 @@ class BaseVCS(ABC):
         Git/Mercurial override this.
         """
         return ""
+
+    # --- commit-hash provenance / identity fingerprints (cols AQ-AU) ---------
+    # Default to empty so a backend that can't produce stable commit ids just
+    # yields blank fingerprints. GitVCS overrides all four.
+    def root_commit_hashes(self, repo_path: Path) -> List[str]:
+        """Parentless (root) commit hashes — the identity anchor (column AQ)."""
+        return []
+
+    def early_commit_hashes(self, repo_path: Path, n: int) -> List[str]:
+        """First N commit hashes, oldest-first (column AT)."""
+        return []
+
+    def head_commit_hash(self, repo_path: Path) -> str:
+        """The commit HEAD/tip currently points at (column AR)."""
+        return ""
+
+    def all_commit_hashes(self, repo_path: Path) -> List[str]:
+        """Every commit hash across refs — input to the commit MinHash (column AU)."""
+        return []
