@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
-import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional, Set, Type
@@ -63,7 +61,8 @@ from .metrics import (  # metrics/ package — all metric classes via __init__.p
 )
 from .settings import AppSettings
 from .tree_sitter_support import TreeSitterManager
-from .utils import run_cmd
+from .vcs import GitVCS, MercurialVCS
+from .vcs.base import BaseVCS
 
 logger = logging.getLogger(__name__)
 
@@ -142,68 +141,28 @@ def run_pipeline(ctx: RepoContext) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Git helpers
+# VCS materialization
 # ---------------------------------------------------------------------------
 
-_CLONE_TIMEOUT = 720  # 10 min — enough for a 4+ GB bundle on a slow disk
+# Bundle extension → VCS backend.  Git keeps the plain ``*.bundle`` it always
+# used; Mercurial bundles use a distinct ``*.hgbundle`` suffix so a bundle's VCS
+# can be determined unambiguously at materialization time.
+_BUNDLE_GLOBS: tuple[str, ...] = ("*.bundle", "*.hgbundle")
+_BUNDLE_VCS = {".hgbundle": MercurialVCS, ".bundle": GitVCS}
 
 
+def vcs_for_bundle(bundle_path: Path) -> BaseVCS:
+    """Return the VCS backend for a bundle, keyed by file extension (git default)."""
+    return _BUNDLE_VCS.get(bundle_path.suffix, GitVCS)()
+
+
+# Thin backward-compatible wrappers (the git implementations now live in GitVCS).
 def clone_bundle(bundle_path: Path, dest_dir: Path) -> Optional[Path]:
-    repo_dir = dest_dir / bundle_path.stem
-    env = os.environ.copy()
-    env.setdefault("GIT_LFS_SKIP_SMUDGE", "1")
-    try:
-        result = subprocess.run(
-            ["git", "clone", str(bundle_path), str(repo_dir)],
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=_CLONE_TIMEOUT,
-        )
-    except subprocess.TimeoutExpired:
-        logger.warning("Clone timed out after %ds: %s", _CLONE_TIMEOUT, bundle_path)
-        return None
-    if result.returncode != 0 or not repo_dir.exists():
-        logger.warning("Failed to clone %s", bundle_path)
-        return None
-
-    # Ensure ALL remote branches are present as refs/remotes/origin/*.
-    subprocess.run(
-        [
-            "git", "-C", str(repo_dir), "fetch", "--quiet", "--force",
-            "origin",
-            "+refs/heads/*:refs/remotes/origin/*",
-        ],
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        timeout=_CLONE_TIMEOUT,
-    )
-
-    logger.debug("Cloned %s into %s", bundle_path.name, repo_dir)
-    return repo_dir
+    return GitVCS().clone(bundle_path, dest_dir)
 
 
 def latest_branch_by_commit(repo_dir: Path) -> Optional[str]:
-    refs_raw = run_cmd(
-        [
-            "git", "for-each-ref",
-            "--sort=-committerdate",
-            "--format=%(refname)|%(committerdate:iso8601)",
-            "refs/heads", "refs/remotes",
-        ],
-        cwd=repo_dir,
-    )
-    for line in refs_raw.splitlines():
-        if "|" not in line:
-            continue
-        ref, _ = line.split("|", 1)
-        ref = ref.strip()
-        if not ref or ref.endswith("/HEAD"):
-            continue
-        return ref
-    current = run_cmd(["git", "rev-parse", "HEAD"], cwd=repo_dir)
-    return current or None
+    return GitVCS().latest_branch(repo_dir)
 
 
 def _short_branch(ref: Optional[str]) -> str:
@@ -223,12 +182,7 @@ def _short_branch(ref: Optional[str]) -> str:
 
 
 def checkout_ref(repo_dir: Path, ref: str) -> bool:
-    result = subprocess.run(
-        ["git", "-C", str(repo_dir), "checkout", "--force", "--quiet", "--detach", ref],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    return result.returncode == 0
+    return GitVCS().checkout(repo_dir, ref)
 
 
 def build_repo_context(
@@ -238,12 +192,13 @@ def build_repo_context(
     ts_manager: Optional[TreeSitterManager],
     tmpdir: Path,
 ) -> Optional[RepoContext]:
-    repo_dir = clone_bundle(bundle_path, tmpdir)
+    vcs = vcs_for_bundle(bundle_path)
+    repo_dir = vcs.clone(bundle_path, tmpdir)
     if repo_dir is None:
         return None
-    branch_ref = latest_branch_by_commit(repo_dir) or "HEAD"
-    if not checkout_ref(repo_dir, branch_ref):
-        logger.debug("Failed to checkout %s; staying on HEAD", branch_ref)
+    branch_ref = vcs.latest_branch(repo_dir) or vcs.default_ref
+    if not vcs.checkout(repo_dir, branch_ref):
+        logger.debug("Failed to checkout %s; staying on default ref", branch_ref)
     return RepoContext(
         repo_path=repo_dir,
         settings=settings,
@@ -251,6 +206,7 @@ def build_repo_context(
         allowed_files=allowed_files,
         bundle_path=bundle_path,
         metadata_branch=_short_branch(branch_ref),
+        vcs=vcs,
     )
 
 
@@ -323,7 +279,9 @@ def run_metadata_pipeline(
     allowed_files: AllowedFiles,
     ts_manager: Optional[TreeSitterManager],
 ) -> None:
-    bundle_files = sorted(dataset_dir.rglob("*.bundle"))
+    bundle_files = sorted(
+        p for glob in _BUNDLE_GLOBS for p in dataset_dir.rglob(glob)
+    )
 
     if bundle_files:
         logger.info("Found %d bundle files under %s", len(bundle_files), dataset_dir)
@@ -371,12 +329,21 @@ def run_metadata_pipeline(
                     continue
                 row = run_pipeline(ctx)
 
-        pd.DataFrame([row]).to_csv(
-            csv_path,
-            mode="a" if csv_path.exists() else "w",
-            header=not csv_path.exists(),
-            index=False,
-        )
-        processed.add(key)
+        row_df = pd.DataFrame([row])
+        if csv_path.exists():
+            # Align to the existing header before appending: pandas appends in the
+            # row's own column order and writes no header on append, so a column-set
+            # mismatch would silently corrupt the file.  reindex keeps it valid.
+            existing_cols = pd.read_csv(csv_path, nrows=0).columns.tolist()
+            if existing_cols and set(existing_cols) != set(row_df.columns):
+                logger.warning(
+                    "CSV %s header differs from current metric schema; aligning row to existing columns.",
+                    csv_path,
+                )
+            row_df = row_df.reindex(columns=existing_cols) if existing_cols else row_df
+            row_df.to_csv(csv_path, mode="a", header=False, index=False)
+        else:
+            row_df.to_csv(csv_path, mode="w", header=True, index=False)
+        processed.add(repo_name)
 
     logger.info("Metadata pipeline finished; %d repositories processed.", len(processed))

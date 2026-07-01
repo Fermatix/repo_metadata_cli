@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..base_metric import BaseMetric, RepoContext
-from ..metric_utils import detect_fork_pct, run_jscpd
+from ..metric_utils import run_jscpd
 
 
 class DuplicationMetric(BaseMetric):
@@ -25,4 +25,4 @@ class ForkPctMetric(BaseMetric):
     field_name = "fork_pct"
 
     def compute(self, ctx: RepoContext) -> Any:
-        return detect_fork_pct(ctx.repo_path)
+        return ctx.vcs.detect_fork(ctx.repo_path)
