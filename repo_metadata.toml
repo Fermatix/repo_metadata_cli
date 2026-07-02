@@ -455,4 +455,9 @@ autogen_dirs = [
     "out",
     ".next",
     ".nuxt",
+    # Unity IL2CPP transpiler output (C# -> C++). Stays inside logical_loc scope
+    # (not in scc_exclude_dirs), so its millions of machine-generated lines are
+    # attributed to autogen_loc. Lowercase — dir names are matched via .lower().
+    "il2cppoutput",
+    "il2cppoutputproject",
 ]
