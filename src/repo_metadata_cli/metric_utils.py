@@ -131,6 +131,10 @@ _DEP_DIR_NAMES: Set[str] = {"vendor", "node_modules", "bower_components"}
 _AUTOGEN_DIRS: Set[str] = {
     "generated", "migrations", "__generated__",
     ".next", ".nuxt", "out",
+    # Unity IL2CPP transpiler output (C# -> C++), often millions of committed
+    # lines. Matched case-insensitively (dir names are compared via .lower()),
+    # so these entries must be lowercase.
+    "il2cppoutput", "il2cppoutputproject",
 }
 
 _AUTOGEN_NAME_RE: List[re.Pattern] = [
