@@ -24,7 +24,9 @@ class RawLocMetric(BaseMetric):
 
 
 class LogicalLocMetric(BaseMetric):
-    """G: scc Code column, excluding node_modules/, vendor/, dist/, build/."""
+    """G: scc Code column, excluding dependency and build-artifact directories
+    (node_modules/, vendor/, .venv/, site-packages/, Pods/, dist/, build/, …
+    the full set is ``metrics.scc_exclude_dirs``)."""
 
     column = "G"
     field_name = "logical_loc"
@@ -49,7 +51,8 @@ class AutoGenLocMetric(BaseMetric):
 
 
 class DepDirLocMetric(BaseMetric):
-    """AE: scc Code lines in dependency directories (vendor/, node_modules/, bower_components/)."""
+    """AE: scc Code lines in dependency directories (``metrics.dep_dirs`` —
+    vendor/, node_modules/, .venv/, site-packages/, Pods/, …)."""
 
     column = "AE"
     field_name = "dep_dir_loc"

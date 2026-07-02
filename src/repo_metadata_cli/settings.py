@@ -34,10 +34,49 @@ class TreeSitterSettings:
 @dataclass
 class MetricsSettings:
     dep_dirs: List[str] = field(
-        default_factory=lambda: ["vendor", "node_modules", "bower_components"]
+        default_factory=lambda: [
+            # JavaScript / TypeScript
+            "node_modules", "bower_components", "jspm_packages",
+            # Go / PHP / Ruby
+            "vendor", "Godeps",
+            # Python (virtualenvs + installed packages + self-vendoring)
+            ".venv", "venv", "site-packages", "_vendor",
+            # iOS / Swift
+            "Pods", "Carthage", "SourcePackages",
+            # Elixir / Erlang
+            "deps",
+            # C / C++
+            "third_party", "thirdparty", "external", "vcpkg_installed",
+            # R / Elm / Haxe / Lua / Nim
+            "renv", "elm-stuff", "haxe_libraries", "lua_modules", "nimbledeps",
+            # Android legacy / Terraform / manual vendoring
+            "libs", ".terraform", "submodules",
+        ]
     )
     scc_exclude_dirs: List[str] = field(
-        default_factory=lambda: ["node_modules", "vendor", "dist", "build", "bower_components"]
+        # Superset of dep_dirs: every dependency directory PLUS build-artifact /
+        # tool-cache directories that hold generated or third-party code and must
+        # not inflate logical_loc (column G).
+        default_factory=lambda: [
+            # JavaScript / TypeScript
+            "node_modules", "bower_components", "jspm_packages",
+            # Go / PHP / Ruby
+            "vendor", "Godeps",
+            # Python (virtualenvs + installed packages + self-vendoring + caches)
+            ".venv", "venv", "site-packages", "_vendor", "__pycache__", ".tox",
+            # iOS / Swift
+            "Pods", "Carthage", "SourcePackages", "DerivedData",
+            # Elixir / Erlang
+            "deps",
+            # C / C++
+            "third_party", "thirdparty", "external", "vcpkg_installed",
+            # R / Elm / Haxe / Lua / Nim
+            "renv", "elm-stuff", "haxe_libraries", "lua_modules", "nimbledeps",
+            # Android legacy / Terraform / manual vendoring
+            "libs", ".terraform", "submodules",
+            # Build outputs / caches
+            "dist", "build", "target", ".gradle", ".dart_tool",
+        ]
     )
     autogen_dirs: List[str] = field(
         default_factory=lambda: [
