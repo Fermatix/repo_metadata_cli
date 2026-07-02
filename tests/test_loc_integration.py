@@ -234,3 +234,68 @@ def test_validate_metrics_config_no_warnings_for_valid_config(caplog):
         _validate_metrics_config(good)
 
     assert caplog.messages == [], f"Expected no warnings, got: {caplog.messages}"
+
+
+def test_shipped_config_excludes_python_env_dirs(caplog):
+    """The shipped repo_metadata.toml must exclude Python virtualenv / installed
+    package directories from logical_loc and keep the dep_dirs ⊆ scc_exclude_dirs
+    invariant. Guards the config against regressing to the old short list."""
+    import logging
+    from repo_metadata_cli.settings import load_app_settings, _validate_metrics_config
+
+    m = load_app_settings(_TOML_PATH).metrics
+    for d in (".venv", "venv", "site-packages", "Pods", "__pycache__"):
+        assert d in m.scc_exclude_dirs, f"{d} must be excluded from logical_loc"
+    for d in (".venv", "venv", "site-packages"):
+        assert d in m.dep_dirs, f"{d} should be counted as dependency code"
+    assert set(m.dep_dirs) <= set(m.scc_exclude_dirs), "dep_dirs ⊄ scc_exclude_dirs"
+
+    with caplog.at_level(logging.WARNING, logger="repo_metadata_cli.settings"):
+        _validate_metrics_config(m)
+    assert caplog.messages == [], f"Shipped config must be valid, got: {caplog.messages}"
+
+
+@pytest.fixture
+def synth_repo_with_venv(tmp_path):
+    """Synthetic repo with own code plus a committed .venv/ and site-packages/."""
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / ".venv" / "lib").mkdir(parents=True)
+    (repo / "site-packages").mkdir()
+
+    (repo / "src" / "main.py").write_text(
+        "\n".join(f"x_{i} = {i}" for i in range(10)) + "\n"
+    )
+    # Third-party code that must NOT count toward logical_loc.
+    (repo / ".venv" / "lib" / "dep.py").write_text(
+        "\n".join(f"a_{i} = {i}" for i in range(200)) + "\n"
+    )
+    (repo / "site-packages" / "pkg.py").write_text(
+        "\n".join(f"b_{i} = {i}" for i in range(150)) + "\n"
+    )
+
+    run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    run(["git", "config", "user.email", "test@test.com"], cwd=repo, check=True, capture_output=True)
+    run(["git", "config", "user.name", "Test"], cwd=repo, check=True, capture_output=True)
+    run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+    run(["git", "commit", "-m", "init"], cwd=repo, check=True, capture_output=True)
+    return repo
+
+
+def test_venv_excluded_from_logical_loc_with_shipped_config(synth_repo_with_venv):
+    """With the shipped config, .venv/ and site-packages/ code lands in
+    dep_dir_loc, not logical_loc."""
+    from repo_metadata_cli.settings import load_app_settings
+
+    settings = load_app_settings(_TOML_PATH)  # real lists, no override
+    ctx = _build_ctx(synth_repo_with_venv, settings)
+
+    raw = RawLocMetric().compute(ctx)
+    logical = LogicalLocMetric().compute(ctx)
+    dep = DepDirLocMetric().compute(ctx)
+
+    # 350 lines of third-party code exist; logical_loc must stay near the ~10
+    # lines of own code and be far below raw.
+    assert logical < raw
+    assert logical <= 20, f"logical_loc ({logical}) must exclude .venv/site-packages code"
+    assert dep >= 300, f"dep_dir_loc ({dep}) should capture the excluded dependency code"
