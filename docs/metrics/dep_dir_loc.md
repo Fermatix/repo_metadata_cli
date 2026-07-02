@@ -59,8 +59,14 @@ Directories scanned for dependency code. Current default value:
 | `bower_components` | JavaScript (Bower) |
 | `jspm_packages` | JavaScript (jspm) |
 | `vendor` | Go, PHP, Ruby (Bundler) |
+| `Godeps` | Go (legacy `godep`) |
+| `.venv` | Python — virtualenv (dot-prefixed) |
+| `venv` | Python — virtualenv |
+| `site-packages` | Python — installed packages (bare, not under a venv) |
+| `_vendor` | Python self-vendoring (pip, setuptools) |
 | `Pods` | iOS — CocoaPods |
 | `Carthage` | iOS — Carthage |
+| `SourcePackages` | Xcode / Swift PM (CI mode) |
 | `deps` | Elixir / Erlang (mix) |
 | `third_party` | C / C++ (Chromium, NDK, game engines) |
 | `thirdparty` | C / C++ (alternate spelling) |
@@ -69,16 +75,14 @@ Directories scanned for dependency code. Current default value:
 | `renv` | R (renv) |
 | `elm-stuff` | Elm |
 | `haxe_libraries` | Haxe (Haxelib) |
-| `libs` | Android legacy / old Java (committed JAR/AAR) |
-| `_vendor` | Python self-vendoring (pip, setuptools) |
-| `submodules` | Manual vendoring via git submodules |
-| `SourcePackages` | Xcode / Swift PM (CI mode) |
 | `lua_modules` | Lua (LuaRocks) |
 | `nimbledeps` | Nim (Nimble) |
+| `libs` | Android legacy / old Java (committed JAR/AAR) |
 | `.terraform` | Terraform provider binaries |
+| `submodules` | Manual vendoring via git submodules |
 
 ### `metrics.scc_exclude_dirs`
 
-Superset of `metrics.dep_dirs`; passed to `scc --exclude-dir` when computing `logical_loc` (column G). Includes all 21 entries above plus build-artifact directories (`dist`, `build`, `target`, `.gradle`, etc.).
+Superset of `metrics.dep_dirs`; passed to `scc --exclude-dir` when computing `logical_loc` (column G). Includes all 25 dependency entries above plus build-artifact and tool-cache directories that hold generated or third-party code: `dist`, `build`, `target`, `.gradle`, `.dart_tool`, `__pycache__`, `.tox`, `DerivedData`.
 
 The invariant `dep_dirs ⊆ scc_exclude_dirs` is enforced at config load time — a violation produces a runtime warning.

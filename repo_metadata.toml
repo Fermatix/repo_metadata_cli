@@ -407,19 +407,41 @@ zig = ["FnProto"]
 # Excluded from Logical LOC and Auto-Generated LOC; counted separately.
 # IMPORTANT: every entry here must also appear in scc_exclude_dirs.
 dep_dirs = [
-    "vendor",
-    "node_modules",
-    "bower_components",
+    # JavaScript / TypeScript
+    "node_modules", "bower_components", "jspm_packages",
+    # Go / PHP / Ruby
+    "vendor", "Godeps",
+    # Python (virtualenvs + installed packages + self-vendoring)
+    ".venv", "venv", "site-packages", "_vendor",
+    # iOS / Swift
+    "Pods", "Carthage", "SourcePackages",
+    # Elixir / Erlang
+    "deps",
+    # C / C++
+    "third_party", "thirdparty", "external", "vcpkg_installed",
+    # R / Elm / Haxe / Lua / Nim
+    "renv", "elm-stuff", "haxe_libraries", "lua_modules", "nimbledeps",
+    # Android legacy / Terraform / manual vendoring
+    "libs", ".terraform", "submodules",
 ]
 
 # Directories excluded from scc for Logical LOC (spec column G).
-# Must contain all dep_dirs entries.
+# Superset of dep_dirs: every dependency directory above PLUS build-artifact and
+# tool-cache directories that hold generated or third-party code. Must contain
+# all dep_dirs entries (invariant enforced at config load).
 scc_exclude_dirs = [
-    "node_modules",
-    "vendor",
-    "dist",
-    "build",
-    "bower_components",
+    # --- dependency directories (must mirror dep_dirs) ---
+    "node_modules", "bower_components", "jspm_packages",
+    "vendor", "Godeps",
+    ".venv", "venv", "site-packages", "_vendor",
+    "Pods", "Carthage", "SourcePackages",
+    "deps",
+    "third_party", "thirdparty", "external", "vcpkg_installed",
+    "renv", "elm-stuff", "haxe_libraries", "lua_modules", "nimbledeps",
+    "libs", ".terraform", "submodules",
+    # --- build outputs / tool caches (excluded from logical_loc only) ---
+    "dist", "build", "target", ".gradle", ".dart_tool",
+    "__pycache__", ".tox", "DerivedData",
 ]
 
 # Directories treated as auto-generated code (spec column H: autogen_loc).
