@@ -82,6 +82,9 @@ class MetricsSettings:
         default_factory=lambda: [
             "generated", "migrations", "__generated__",
             ".next", ".nuxt", "out",
+            # Unity IL2CPP transpiler output (C# -> C++); lowercase, matched
+            # case-insensitively.
+            "il2cppoutput", "il2cppoutputproject",
         ]
     )
 

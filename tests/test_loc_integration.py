@@ -299,3 +299,31 @@ def test_venv_excluded_from_logical_loc_with_shipped_config(synth_repo_with_venv
     assert logical < raw
     assert logical <= 20, f"logical_loc ({logical}) must exclude .venv/site-packages code"
     assert dep >= 300, f"dep_dir_loc ({dep}) should capture the excluded dependency code"
+
+
+def test_il2cpp_output_counted_as_autogen(tmp_path):
+    """Unity IL2CPP transpiler output (C# -> C++) must be attributed to
+    autogen_loc. The dir name is matched case-insensitively."""
+    from repo_metadata_cli.metric_utils import get_auto_gen_loc
+
+    # Committed IL2CPP output — hand-written code lives elsewhere.
+    (tmp_path / "WaterConnect_BackUpThisFolder" / "il2cppOutput").mkdir(parents=True)
+    (tmp_path / "WaterConnect_BackUpThisFolder" / "il2cppOutput" / "Assembly-CSharp.cpp").write_text(
+        "\n".join(f"int f_{i}() {{ return {i}; }}" for i in range(300)) + "\n"
+    )
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "Player.cs").write_text(
+        "\n".join(f"var x_{i} = {i};" for i in range(10)) + "\n"
+    )
+
+    autogen = get_auto_gen_loc(tmp_path, autogen_dirs={"il2cppoutput"}, exclude_dirs=set())
+    assert autogen >= 300, f"IL2CPP output should count as autogen, got {autogen}"
+
+
+def test_shipped_config_marks_il2cpp_as_autogen():
+    """The shipped repo_metadata.toml lists the Unity IL2CPP output dirs so their
+    code is attributed to autogen_loc rather than passing as hand-written."""
+    from repo_metadata_cli.settings import load_app_settings
+
+    autogen = {d.lower() for d in load_app_settings(_TOML_PATH).metrics.autogen_dirs}
+    assert "il2cppoutput" in autogen, "il2cppOutput must be an autogen dir"
