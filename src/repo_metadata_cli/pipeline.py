@@ -35,6 +35,7 @@ from .metrics import (  # metrics/ package — all metric classes via __init__.p
     ExtensionsMetric,
     FirstCommitHashMetric,
     ForkPctMetric,
+    FullLangDistributionMetric,
     GitHistoryMbMetric,
     HoldoutMetric,
     IssueTrackerMetric,
@@ -116,6 +117,10 @@ METRICS: list[Type[BaseMetric]] = [
     MetadataBranchNameMetric,  # AS
     EarlyCommitHashesMetric,   # AT
     CommitMinhashMetric,       # AU
+    # Unfiltered language distribution — diagnostic counterpart of M, which
+    # keeps real programming languages only. Appended last so the spec letters
+    # A → AU above stay stable.
+    FullLangDistributionMetric,  # AV
 ]
 
 # Empty placeholder columns per spec.

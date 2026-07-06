@@ -13,8 +13,42 @@ from ..base_metric import BaseMetric, RepoContext
 from ..metric_utils import get_lang_code_no_autogen, get_scc_file_stats
 
 
+def _is_code_language(name: str, ctx: RepoContext) -> bool:
+    """True when *name* (scc spelling) is a real programming language.
+
+    Markup/style/data/config/docs formats (JSON, YAML, Markdown, HTML, CSS, …)
+    are listed in settings.metrics.non_code_languages — same set and semantics
+    as the downstream batch scripts' NON_CODE filter.
+    """
+    return name not in set(ctx.settings.metrics.non_code_languages)
+
+
+def _per_lang_code(ctx: RepoContext) -> dict[str, int]:
+    """scc Code lines per language, excluding dependency dirs AND autogen files."""
+    return ctx._cached(
+        "per_lang_code",
+        lambda: get_lang_code_no_autogen(
+            ctx.repo_path,
+            autogen_dirs=set(ctx.settings.metrics.autogen_dirs),
+            exclude_dirs=list(ctx.settings.metrics.scc_exclude_dirs),
+        ),
+    )
+
+
+def _shares(per_lang: dict[str, int]) -> dict[str, float]:
+    """Language → fraction of Code lines, keeping only shares ≥ 1%."""
+    total_code = sum(per_lang.values())
+    if total_code == 0:
+        return {}
+    return {
+        name: round(code / total_code, 6)
+        for name, code in per_lang.items()
+        if code / total_code >= 0.01
+    }
+
+
 def _lang_distribution(ctx: RepoContext) -> dict[str, float]:
-    """Language → fraction of hand-written Code lines ≥ 1%.
+    """Real programming language → fraction of hand-written Code lines ≥ 1%.
 
     Counts scc Code lines per language excluding dependency dirs
     (node_modules/vendor) AND auto-generated files (committed bundles, minified
@@ -22,25 +56,31 @@ def _lang_distribution(ctx: RepoContext) -> dict[str, float]:
     human actually wrote: a TypeScript app shipping a large committed
     ``app.bundle.js`` is reported as TypeScript, not JavaScript.
 
+    Non-code languages (JSON/YAML/Markdown/HTML/…) are dropped BEFORE the total
+    is taken, so the remaining shares renormalize over real code only. A repo
+    with no real code at all yields {} (and primary_language == "").
+
     Cached on the context so PrimaryLanguageMetric (L) and LangDistributionMetric (M)
     stay consistent — primary_language is always the max key of this distribution.
     """
     def _compute() -> dict[str, float]:
-        per_lang = get_lang_code_no_autogen(
-            ctx.repo_path,
-            autogen_dirs=set(ctx.settings.metrics.autogen_dirs),
-            exclude_dirs=list(ctx.settings.metrics.scc_exclude_dirs),
-        )
-        total_code = sum(per_lang.values())
-        if total_code == 0:
-            return {}
-        return {
-            name: round(code / total_code, 6)
-            for name, code in per_lang.items()
-            if code / total_code >= 0.01
+        per_lang = {
+            name: code
+            for name, code in _per_lang_code(ctx).items()
+            if _is_code_language(name, ctx)
         }
+        return _shares(per_lang)
 
     return ctx._cached("lang_distribution", _compute)
+
+
+def _full_lang_distribution(ctx: RepoContext) -> dict[str, float]:
+    """Unfiltered variant of _lang_distribution: every scc language kept.
+
+    Same dependency-dir/autogen exclusions and ≥1% cutoff, but non-code formats
+    (JSON/YAML/Markdown/…) stay in — the raw picture of what the repo contains.
+    """
+    return ctx._cached("full_lang_distribution", lambda: _shares(_per_lang_code(ctx)))
 
 
 class SourceFilesMetric(BaseMetric):
@@ -67,13 +107,23 @@ class PrimaryLanguageMetric(BaseMetric):
 
 
 class LangDistributionMetric(BaseMetric):
-    """M: JSON dict of language → fraction of Code lines ≥ 1% (excl node_modules/vendor)."""
+    """M: JSON dict of real language → fraction of Code lines ≥ 1% (excl node_modules/vendor)."""
 
     column = "M"
     field_name = "lang_distribution"
 
     def compute(self, ctx: RepoContext) -> Any:
         return json.dumps(_lang_distribution(ctx), ensure_ascii=False)
+
+
+class FullLangDistributionMetric(BaseMetric):
+    """AV: same as M but WITHOUT the non-code language filter (JSON/YAML/… kept)."""
+
+    column = "AV"
+    field_name = "full_lang_distribution"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return json.dumps(_full_lang_distribution(ctx), ensure_ascii=False)
 
 
 class ExtensionsMetric(BaseMetric):
@@ -104,18 +154,25 @@ class ExtensionsMetric(BaseMetric):
 
 
 class StackMetric(BaseMetric):
-    """AM: Human-readable top-3 languages with percentages, e.g. "Python (62%), Go (30%)"."""
+    """AM: Human-readable top-3 REAL languages with percentages, e.g. "Python (62%), Go (30%)".
+
+    Non-code formats (JSON/YAML/Markdown/…) are dropped and percentages are
+    taken over the remaining real-code lines, matching lang_distribution (M).
+    """
 
     column = "AM"
     field_name = "stack"
 
     def compute(self, ctx: RepoContext) -> Any:
-        langs = ctx.scc_stats_no_deps.get("languages", [])
-        total_code = ctx.scc_stats_no_deps["total"]["code"]
-        if total_code == 0 or not langs:
+        langs = [
+            l for l in ctx.scc_stats_no_deps.get("languages", [])
+            if l["code"] > 0 and _is_code_language(l["name"], ctx)
+        ]
+        total_code = sum(l["code"] for l in langs)
+        if total_code == 0:
             return ""
         ranked = sorted(
-            ((l["name"], l["code"]) for l in langs if l["code"] > 0),
+            ((l["name"], l["code"]) for l in langs),
             key=lambda x: -x[1],
         )[:3]
         return ", ".join(f"{name} ({code / total_code:.0%})" for name, code in ranked)
