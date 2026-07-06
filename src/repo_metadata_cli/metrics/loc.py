@@ -8,7 +8,7 @@ from ..base_metric import BaseMetric, RepoContext
 from ..metric_utils import (
     count_chars_in_files,
     get_auto_gen_loc,
-    get_dep_dir_loc,
+    get_dependency_dir_loc,
     get_scc_file_stats,
 )
 
@@ -55,11 +55,11 @@ class DepDirLocMetric(BaseMetric):
     vendor/, node_modules/, .venv/, site-packages/, Pods/, …)."""
 
     column = "AE"
-    field_name = "dep_dir_loc"
+    field_name = "dependency_dir_loc"
 
     def compute(self, ctx: RepoContext) -> Any:
         dep_dir_names = set(ctx.settings.metrics.dep_dirs)
-        return ctx._cached("dep_dir_loc", lambda: get_dep_dir_loc(ctx.repo_path, dep_dir_names))
+        return ctx._cached("dependency_dir_loc", lambda: get_dependency_dir_loc(ctx.repo_path, dep_dir_names))
 
 
 class CommentRatioMetric(BaseMetric):

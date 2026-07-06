@@ -267,11 +267,11 @@ def test_duplication_parity_git_vs_hg(tmp_path):
 
 
 # ===========================================================================
-# dep_dir_loc (AE): nested dependency dirs are counted
+# dependency_dir_loc (AE): nested dependency dirs are counted
 # ===========================================================================
 
-def test_dep_dir_loc_counts_nested(tmp_path):
-    from repo_metadata_cli.metric_utils import get_dep_dir_loc
+def test_dependency_dir_loc_counts_nested(tmp_path):
+    from repo_metadata_cli.metric_utils import get_dependency_dir_loc
 
     repo = tmp_path / "g"
     _init_git(repo)
@@ -282,7 +282,7 @@ def test_dep_dir_loc_counts_nested(tmp_path):
     (nested / "lib.py").write_text("\n".join(f"z{i}={i}" for i in range(7)) + "\n")
     _git_commit(repo, "init")
     # Nested src/vendor/lib.py (7 code lines) must be counted in AE.
-    assert get_dep_dir_loc(repo) >= 7
+    assert get_dependency_dir_loc(repo) >= 7
 
 
 # ===========================================================================
