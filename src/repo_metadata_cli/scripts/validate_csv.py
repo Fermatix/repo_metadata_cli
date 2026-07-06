@@ -133,14 +133,14 @@ def _check_format(df: pd.DataFrame) -> List[CheckResult]:
             val = df.loc[df["repo_name"] == name, col_name].values[0]
             r.add(name, f"{col_name}={val}")
 
-    # dep_dir_loc (AE) — optional column, present only when dep dirs are committed to git
-    if "dep_dir_loc" in df.columns:
-        r = col("dep_dir_loc_ge0", "dep_dir_loc (AE) >= 0")
-        numeric = pd.to_numeric(df["dep_dir_loc"], errors="coerce")
+    # dependency_dir_loc (AE) — optional column, present only when dep dirs are committed to git
+    if "dependency_dir_loc" in df.columns:
+        r = col("dependency_dir_loc_ge0", "dependency_dir_loc (AE) >= 0")
+        numeric = pd.to_numeric(df["dependency_dir_loc"], errors="coerce")
         bad = df[numeric.isna() | (numeric < 0)]
         for name in bad["repo_name"]:
-            val = df.loc[df["repo_name"] == name, "dep_dir_loc"].values[0]
-            r.add(name, f"dep_dir_loc={val}")
+            val = df.loc[df["repo_name"] == name, "dependency_dir_loc"].values[0]
+            r.add(name, f"dependency_dir_loc={val}")
 
     # Float [0,1] columns
     for col_name, label in [
@@ -270,14 +270,14 @@ def _check_invariants(df: pd.DataFrame) -> Tuple[List[CheckResult], List[CheckRe
     for _, row in bad.iterrows():
         r.add(row["repo_name"], f"reviewed_pr={row['reviewed_pr_count']}, total_pr={row['total_pr_count']}")
 
-    # AE <= F: dep_dir_loc cannot exceed raw_loc
-    if "dep_dir_loc" in df.columns:
-        r = err("dep_dir_le_raw", "dep_dir_loc (AE) <= raw_loc (F)")
+    # AE <= F: dependency_dir_loc cannot exceed raw_loc
+    if "dependency_dir_loc" in df.columns:
+        r = err("dep_dir_le_raw", "dependency_dir_loc (AE) <= raw_loc (F)")
         raw = pd.to_numeric(df["raw_loc"], errors="coerce")
-        dep = pd.to_numeric(df["dep_dir_loc"], errors="coerce")
+        dep = pd.to_numeric(df["dependency_dir_loc"], errors="coerce")
         bad = df[dep > raw]
         for _, row in bad.iterrows():
-            r.add(row["repo_name"], f"dep_dir_loc={row['dep_dir_loc']}, raw_loc={row['raw_loc']}")
+            r.add(row["repo_name"], f"dependency_dir_loc={row['dependency_dir_loc']}, raw_loc={row['raw_loc']}")
 
     # F == G warning (no blanks/comments — spec says "likely incorrect")
     r = warn("F_eq_G", "raw_loc == logical_loc with raw_loc > 0 (spec: 'likely incorrect')")
@@ -503,6 +503,8 @@ def main() -> None:
         sys.exit(2)
 
     df = pd.read_csv(csv_path)
+    # Legacy CSVs used the short column name; validate them under the current one.
+    df = df.rename(columns={"dep_dir_loc": "dependency_dir_loc"})
     total_rows = len(df)
     print(f"Loaded {total_rows} rows from {csv_path}")
 

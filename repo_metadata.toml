@@ -403,7 +403,7 @@ wgsl = ["function_declaration"]
 zig = ["FnProto"]
 
 [metrics]
-# Dependency directories (spec column AE: dep_dir_loc).
+# Dependency directories (spec column AE: dependency_dir_loc).
 # Excluded from Logical LOC and Auto-Generated LOC; counted separately.
 # IMPORTANT: every entry here must also appear in scc_exclude_dirs.
 dep_dirs = [
