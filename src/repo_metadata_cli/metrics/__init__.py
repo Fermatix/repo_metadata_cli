@@ -13,6 +13,7 @@ from .docs import (
 )
 from .files import (
     ExtensionsMetric,
+    FullLangDistributionMetric,
     LangDistributionMetric,
     PrimaryLanguageMetric,
     SourceFilesMetric,
@@ -92,4 +93,6 @@ __all__ = [
     "MetadataBranchNameMetric",
     "EarlyCommitHashesMetric",
     "CommitMinhashMetric",
+    # unfiltered language distribution (AV) — diagnostic counterpart of M
+    "FullLangDistributionMetric",
 ]

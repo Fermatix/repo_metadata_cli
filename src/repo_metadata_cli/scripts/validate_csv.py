@@ -20,6 +20,8 @@ from typing import List, Tuple
 
 import pandas as pd
 
+from repo_metadata_cli.settings import MetricsSettings
+
 # ---------------------------------------------------------------------------
 # Constants — allowed values for categorical columns
 # ---------------------------------------------------------------------------
@@ -33,7 +35,10 @@ _HOLDOUT_VALUES = {"Unverified", "Likely Private", "Verified Private", "Verified
 _README_VALUES = {"None", "Basic", "Detailed", "Comprehensive"}
 _ISSUE_TRACKER_VALUES = {"None", "Basic", "Linked to Commits", "Full+Design Docs"}
 
-_NON_CODE_PRIMARY_LANGS = {"SVG", "JSON", "Plain Text", "Markdown", "TOML", "YAML", "XML"}
+# Full default deny-list from settings: primary_language/lang_distribution are
+# now filtered at the producer, so any hit here signals a filter bug (or a CSV
+# produced with a config that overrides non_code_languages).
+_NON_CODE_PRIMARY_LANGS = frozenset(MetricsSettings().non_code_languages)
 
 _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
@@ -199,6 +204,23 @@ def _check_format(df: pd.DataFrame) -> List[CheckResult]:
             if not isinstance(pct, (int, float)) or pct < 0 or pct > 1:
                 r.add(row["repo_name"], f"{lang}={pct}")
                 break
+
+    # full_lang_distribution (AV): same JSON/sum checks. Optional — the column
+    # only exists in CSVs produced after the non-code language filter landed.
+    if "full_lang_distribution" in df.columns:
+        r = col("full_lang_dist_json", "full_lang_distribution (AV) is valid JSON")
+        for _, row in df.iterrows():
+            if _parse_lang_dist(row["full_lang_distribution"]) is None:
+                r.add(row["repo_name"], f"invalid JSON: {str(row['full_lang_distribution'])[:60]}")
+
+        r = col("full_lang_dist_sum", "full_lang_distribution values sum to ~1.0 (±0.05)")
+        for _, row in df.iterrows():
+            dist = _parse_lang_dist(row["full_lang_distribution"])
+            if dist is None or not dist:
+                continue
+            total = sum(dist.values())
+            if abs(total - 1.0) > 0.05:
+                r.add(row["repo_name"], f"sum={total:.4f}, dist={str(dist)[:80]}")
 
     return results
 

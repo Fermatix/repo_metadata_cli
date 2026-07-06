@@ -461,3 +461,32 @@ autogen_dirs = [
     "il2cppoutput",
     "il2cppoutputproject",
 ]
+
+# scc language names that are NOT real programming languages — excluded from
+# primary_language (L), lang_distribution (M) and stack (AM); the unfiltered
+# picture is kept in full_lang_distribution (AV). Mirror of the client-agreed
+# NON_CODE set (repo_sample_extractor languages.py NON_CODE_LANGS +
+# lord-of-the-repos concat_recalc_metadata.py EXTRA_NON_CODE); keep in sync.
+# Logic-less template formats (Mustache, Handlebars, Jade, HAML) are markup;
+# templates with real control flow (Twig, Smarty, Blade, ERB, Razor, JSP,
+# Freemarker, Jinja, Mako) stay code. Shell/Batch/Dockerfile/Makefile/Gradle/
+# Terraform stay code (sampler parity).
+non_code_languages = [
+    # markup / style / data / docs
+    "SVG", "CSS", "Sass", "LESS", "Stylus", "HTML", "JSON", "Markdown", "MDX",
+    "Plain Text", "CSV", "YAML", "TOML", "INI", "XML", "XML Schema", "XAML",
+    "License", "Properties File", "Docker ignore",
+    # logic-less templates
+    "Mustache", "Handlebars", "Jade", "HAML",
+    # notebook JSON (scc weighs the notebook JSON, not the code inside)
+    "Jupyter",
+    # docs/data/diff formats, XML-family build/report/interface files,
+    # key-value config formats, schema/IDL (no control flow), spec text
+    "ReStructuredText", "Rich Text Format", "Patch", "DOT",
+    "MSBuild", "Web Services Description Language",
+    "Report Definition Language", "Module-Definition",
+    "Windows Resource-Definition Script",
+    "Xcode Config", "Systemd", "Bitbucket Pipeline", "CloudFormation (YAML)",
+    "Avro", "Protocol Buffers", "GraphQL", "Gherkin Specification",
+    "Extensible Stylesheet Language Transformations",
+]
