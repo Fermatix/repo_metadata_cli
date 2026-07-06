@@ -1,7 +1,7 @@
 """Integration tests for LOC metrics.
 
 Creates a synthetic git repository with a known file structure and verifies
-that raw_loc, logical_loc, autogen_loc, dep_dir_loc satisfy their invariants.
+that raw_loc, logical_loc, autogen_loc, dependency_dir_loc satisfy their invariants.
 
 Requires: git (always available), scc (optional — invariant checks only).
 """
@@ -49,7 +49,7 @@ def synth_repo(tmp_path):
 
     src/main.py       — 10 code lines, 2 blank, 1 comment  (logical LOC, not autogen)
     generated/api.py  — 5 code lines                        (autogen_loc)
-    vendor/lib.py     — 20 code lines                       (dep_dir_loc, excluded from logical)
+    vendor/lib.py     — 20 code lines                       (dependency_dir_loc, excluded from logical)
     """
     repo = tmp_path / "repo"
     (repo / "src").mkdir(parents=True)
@@ -113,7 +113,7 @@ def test_autogen_loc_le_logical_loc(synth_repo):
     )
 
 
-def test_dep_dir_loc_non_negative(synth_repo):
+def test_dependency_dir_loc_non_negative(synth_repo):
     settings = _make_settings()
     ctx = _build_ctx(synth_repo, settings)
     dep = DepDirLocMetric().compute(ctx)
@@ -134,7 +134,7 @@ def test_loc_invariant_chain(synth_repo):
     assert raw >= logical >= autogen >= 0, (
         f"Invariant broken: raw={raw}, logical={logical}, autogen={autogen}"
     )
-    assert dep >= 0, f"dep_dir_loc must be non-negative, got {dep}"
+    assert dep >= 0, f"dependency_dir_loc must be non-negative, got {dep}"
 
 
 def test_autogen_loc_le_logical_loc_without_cap(synth_repo):
@@ -284,7 +284,7 @@ def synth_repo_with_venv(tmp_path):
 
 def test_venv_excluded_from_logical_loc_with_shipped_config(synth_repo_with_venv):
     """With the shipped config, .venv/ and site-packages/ code lands in
-    dep_dir_loc, not logical_loc."""
+    dependency_dir_loc, not logical_loc."""
     from repo_metadata_cli.settings import load_app_settings
 
     settings = load_app_settings(_TOML_PATH)  # real lists, no override
@@ -298,7 +298,7 @@ def test_venv_excluded_from_logical_loc_with_shipped_config(synth_repo_with_venv
     # lines of own code and be far below raw.
     assert logical < raw
     assert logical <= 20, f"logical_loc ({logical}) must exclude .venv/site-packages code"
-    assert dep >= 300, f"dep_dir_loc ({dep}) should capture the excluded dependency code"
+    assert dep >= 300, f"dependency_dir_loc ({dep}) should capture the excluded dependency code"
 
 
 def test_il2cpp_output_counted_as_autogen(tmp_path):

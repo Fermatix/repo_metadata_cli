@@ -1,4 +1,4 @@
-# Metric `dep_dir_loc` (column AС)
+# Metric `dependency_dir_loc` (column AС)
 
 Number of code lines (`scc Code`) in third-party dependency directories physically present in the repository.
 
@@ -6,7 +6,7 @@ Number of code lines (`scc Code`) in third-party dependency directories physical
 
 The metric is non-zero only when a dependency manager commits its directories to git (Go `vendor/`, iOS `Pods/`, Elixir `deps/`, Android `libs/`, etc.). In most modern projects dependencies are listed in `.gitignore`, so the field equals 0.
 
-### Why most repositories have `dep_dir_loc = 0`
+### Why most repositories have `dependency_dir_loc = 0`
 
 Modern package managers are designed around the assumption that dependencies are **not committed to version control**. Instead, a lock file (`package-lock.json`, `go.sum`, `Cargo.lock`, etc.) pins exact versions, and the dependency directories are restored at build time via `npm install`, `go mod download`, `cargo fetch`, etc. As a result, the following entries are almost universally present in `.gitignore`:
 
@@ -17,9 +17,9 @@ vendor/        # in most JS/PHP/Ruby projects
 __pycache__/
 ```
 
-The directories in `metrics.dep_dirs` will therefore not exist in the cloned repository, and `dep_dir_loc` will be 0.
+The directories in `metrics.dep_dirs` will therefore not exist in the cloned repository, and `dependency_dir_loc` will be 0.
 
-**Exceptions — cases where `dep_dir_loc > 0`:**
+**Exceptions — cases where `dependency_dir_loc > 0`:**
 
 | Ecosystem | Directory | Reason committed |
 |---|---|---|
@@ -36,14 +36,14 @@ The directories in `metrics.dep_dirs` will therefore not exist in the cloned rep
 For each name in `metrics.dep_dirs` (`repo_metadata.toml`), the corresponding top-level directory is checked for existence in the repository root. `scc` is run over all found directories and the `Code` column is summed.
 
 ```
-dep_dir_loc = Σ scc_code( repo_root / d )
+dependency_dir_loc = Σ scc_code( repo_root / d )
               for each d ∈ metrics.dep_dirs
               where ( repo_root / d ) exists
 ```
 
 ## Relationship to other metrics
 
-Every entry in `metrics.dep_dirs` is required to also appear in `metrics.scc_exclude_dirs`, so dependency directory code is **excluded** from `logical_loc` (column G) and does not contribute to `autogen_loc` (column H). Invariant: `dep_dir_loc ≤ raw_loc`.
+Every entry in `metrics.dep_dirs` is required to also appear in `metrics.scc_exclude_dirs`, so dependency directory code is **excluded** from `logical_loc` (column G) and does not contribute to `autogen_loc` (column H). Invariant: `dependency_dir_loc ≤ raw_loc`.
 
 ---
 
