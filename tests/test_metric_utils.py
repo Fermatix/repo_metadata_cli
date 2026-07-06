@@ -17,7 +17,7 @@ from repo_metadata_cli.metric_utils import (
     compute_readme_stats,
     count_chars_in_files,
     detect_license,
-    get_dep_dir_loc,
+    get_dependency_dir_loc,
 )
 
 
@@ -161,37 +161,37 @@ def test_is_autogen_regular_file_is_false(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# get_dep_dir_loc
+# get_dependency_dir_loc
 # ---------------------------------------------------------------------------
 
-def test_dep_dir_loc_zero_when_no_dep_dirs_exist(tmp_path):
+def test_dependency_dir_loc_zero_when_no_dep_dirs_exist(tmp_path):
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "main.py").write_text("x = 1\n")
-    result = get_dep_dir_loc(tmp_path, {"node_modules", "vendor"})
+    result = get_dependency_dir_loc(tmp_path, {"node_modules", "vendor"})
     assert result == 0
 
 
-def test_dep_dir_loc_zero_for_empty_dep_set(tmp_path):
+def test_dependency_dir_loc_zero_for_empty_dep_set(tmp_path):
     vendor = tmp_path / "vendor"
     vendor.mkdir()
     (vendor / "lib.go").write_text("package lib\nfunc F() {}\n")
-    result = get_dep_dir_loc(tmp_path, set())
+    result = get_dependency_dir_loc(tmp_path, set())
     assert result == 0
 
 
-def test_dep_dir_loc_returns_int(tmp_path):
+def test_dependency_dir_loc_returns_int(tmp_path):
     vendor = tmp_path / "vendor"
     vendor.mkdir()
     (vendor / "lib.py").write_text("\n".join(f"x{i} = {i}" for i in range(10)))
-    result = get_dep_dir_loc(tmp_path, {"vendor"})
+    result = get_dependency_dir_loc(tmp_path, {"vendor"})
     assert isinstance(result, int)
     assert result >= 0
 
 
-def test_dep_dir_loc_ignores_non_dep_dirs(tmp_path):
+def test_dependency_dir_loc_ignores_non_dep_dirs(tmp_path):
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "main.py").write_text("x = 1\n")
-    result = get_dep_dir_loc(tmp_path, {"vendor"})
+    result = get_dependency_dir_loc(tmp_path, {"vendor"})
     assert result == 0
 
 

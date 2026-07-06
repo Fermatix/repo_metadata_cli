@@ -327,7 +327,7 @@ def get_lang_code_no_autogen(
     return per_lang
 
 
-def get_dep_dir_loc(repo_dir: Path, dep_dir_names: Optional[Set[str]] = None) -> int:
+def get_dependency_dir_loc(repo_dir: Path, dep_dir_names: Optional[Set[str]] = None) -> int:
     """Count scc Code lines in dependency directories (vendor/, node_modules/, bower_components/).
 
     Excluded from both Logical LOC and Auto-Generated LOC; reported separately as column AE.
