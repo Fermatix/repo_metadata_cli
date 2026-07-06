@@ -106,6 +106,7 @@ def mixed_code_and_data(tmp_path):
     (repo / "run.sh").write_text("\n".join(f"echo line{i}" for i in range(40)) + "\n")
     (repo / "Dockerfile").write_text("FROM python:3.12\n" + "\n".join(f"RUN echo {i}" for i in range(19)) + "\n")
     (repo / "data.json").write_text("[\n" + ",\n".join(f'  {{"k{i}": {i}}}' for i in range(200)) + "\n]\n")
+    (repo / "dump.jsonl").write_text("\n".join(f'{{"row": {i}}}' for i in range(150)) + "\n")
     (repo / "config.yaml").write_text("\n".join(f"key{i}: {i}" for i in range(100)) + "\n")
     (repo / "README.md").write_text("\n".join(f"line {i} of docs" for i in range(100)) + "\n")
     (repo / "page.html").write_text("\n".join(f"<p>row {i}</p>" for i in range(80)) + "\n")
@@ -129,7 +130,7 @@ def test_lang_distribution_keeps_real_languages_only(mixed_code_and_data):
 
     ctx = _build_ctx(mixed_code_and_data, _settings())
     dist = json.loads(LangDistributionMetric().compute(ctx))
-    assert not {"JSON", "YAML", "Markdown", "HTML"} & dist.keys(), dist
+    assert not {"JSON", "JSONL", "YAML", "Markdown", "HTML"} & dist.keys(), dist
     # Shell and Dockerfile are real code (sampler parity), Python dominates.
     assert set(dist) == {"Python", "Shell", "Dockerfile"}, dist
     assert abs(sum(dist.values()) - 1.0) < 0.05, "shares must renormalize over real code"

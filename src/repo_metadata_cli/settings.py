@@ -96,9 +96,11 @@ class MetricsSettings:
         # are markup; templates with real control flow (Twig, Smarty, Blade,
         # ERB, Razor, JSP, Freemarker, Jinja, Mako) stay code.
         # Shell/Batch/Dockerfile/Makefile/Gradle/Terraform stay code.
+        # JSONL added on top of the shared set (2026-07: a 102k-line JSONL data
+        # dump scored primary_language=JSONL) — propagate to the mirrors.
         default_factory=lambda: [
             # Markup / style / data / docs
-            "SVG", "CSS", "Sass", "LESS", "Stylus", "HTML", "JSON", "Markdown", "MDX",
+            "SVG", "CSS", "Sass", "LESS", "Stylus", "HTML", "JSON", "JSONL", "Markdown", "MDX",
             "Plain Text", "CSV", "YAML", "TOML", "INI", "XML", "XML Schema", "XAML",
             "License", "Properties File", "Docker ignore",
             # Logic-less templates
