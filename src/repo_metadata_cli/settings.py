@@ -87,6 +87,35 @@ class MetricsSettings:
             "il2cppoutput", "il2cppoutputproject",
         ]
     )
+    non_code_languages: List[str] = field(
+        # scc language names excluded from primary_language (L),
+        # lang_distribution (M) and stack (AM). Mirror of the client-agreed
+        # NON_CODE set (repo_sample_extractor languages.py NON_CODE_LANGS +
+        # lord-of-the-repos concat_recalc_metadata.py EXTRA_NON_CODE); keep in
+        # sync. Logic-less template formats (Mustache, Handlebars, Jade, HAML)
+        # are markup; templates with real control flow (Twig, Smarty, Blade,
+        # ERB, Razor, JSP, Freemarker, Jinja, Mako) stay code.
+        # Shell/Batch/Dockerfile/Makefile/Gradle/Terraform stay code.
+        default_factory=lambda: [
+            # Markup / style / data / docs
+            "SVG", "CSS", "Sass", "LESS", "Stylus", "HTML", "JSON", "Markdown", "MDX",
+            "Plain Text", "CSV", "YAML", "TOML", "INI", "XML", "XML Schema", "XAML",
+            "License", "Properties File", "Docker ignore",
+            # Logic-less templates
+            "Mustache", "Handlebars", "Jade", "HAML",
+            # Notebook JSON (scc weighs the notebook JSON, not the code inside)
+            "Jupyter",
+            # Docs/data/diff formats, XML-family build/report/interface files,
+            # key-value config formats, schema/IDL (no control flow), spec text
+            "ReStructuredText", "Rich Text Format", "Patch", "DOT",
+            "MSBuild", "Web Services Description Language",
+            "Report Definition Language", "Module-Definition",
+            "Windows Resource-Definition Script",
+            "Xcode Config", "Systemd", "Bitbucket Pipeline", "CloudFormation (YAML)",
+            "Avro", "Protocol Buffers", "GraphQL", "Gherkin Specification",
+            "Extensible Stylesheet Language Transformations",
+        ]
+    )
 
 
 @dataclass
@@ -221,6 +250,10 @@ def load_app_settings(config_file: Optional[Path]) -> AppSettings:
         metrics_settings.scc_exclude_dirs = [str(x) for x in metrics_data["scc_exclude_dirs"] if str(x).strip()]
     if isinstance(metrics_data.get("autogen_dirs"), list):
         metrics_settings.autogen_dirs = [str(x) for x in metrics_data["autogen_dirs"] if str(x).strip()]
+    if isinstance(metrics_data.get("non_code_languages"), list):
+        metrics_settings.non_code_languages = [
+            str(x) for x in metrics_data["non_code_languages"] if str(x).strip()
+        ]
 
     _validate_metrics_config(metrics_settings)
 
