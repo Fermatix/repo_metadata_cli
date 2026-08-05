@@ -40,6 +40,14 @@ class RepoOrgMetric(BaseMetric):
         return ctx.repo_org
 
 
+class RepoUrlMetric(BaseMetric):
+    column = "AW"
+    field_name = "repo_url"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return ctx.repo_url
+
+
 class NumReposMetric(BaseMetric):
     column = "E"
     field_name = "num_repos"
