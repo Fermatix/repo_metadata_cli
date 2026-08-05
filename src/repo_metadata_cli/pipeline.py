@@ -51,6 +51,7 @@ from .metrics import (  # metrics/ package — all metric classes via __init__.p
     ReadmeQualityMetric,
     RepoBundleMbMetric,
     RepoOrgMetric,
+    RepoUrlMetric,
     ReviewedPRMetric,
     SourceFilesMetric,
     StackMetric,
@@ -121,6 +122,9 @@ METRICS: list[Type[BaseMetric]] = [
     # keeps real programming languages only. Appended last so the spec letters
     # A → AU above stay stable.
     FullLangDistributionMetric,  # AV
+    # Source URL/path exactly as written in repos.txt (origin remote in
+    # directory mode). Appended last so the spec letters above stay stable.
+    RepoUrlMetric,               # AW
 ]
 
 # Empty placeholder columns per spec.
