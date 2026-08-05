@@ -131,6 +131,9 @@ class AppSettings:
     partner_map: Dict[str, str] = field(default_factory=dict)
     # Optional {bundle_stem -> repo_org} map (full namespace path), same source.
     org_map: Dict[str, str] = field(default_factory=dict)
+    # Optional {bundle_stem -> source URL/path} map: the repos.txt entry as
+    # written, exported to the repo_url CSV column.
+    url_map: Dict[str, str] = field(default_factory=dict)
     # Optional {bundle_stem -> repo_leaf} map: short repo name, since bundles are
     # named by the full path. Lets repo_name stay the leaf. Same source.
     name_map: Dict[str, str] = field(default_factory=dict)

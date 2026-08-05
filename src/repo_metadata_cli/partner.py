@@ -134,6 +134,28 @@ def build_partner_map(repos_file: Path) -> Dict[str, str]:
     return mapping
 
 
+def build_url_map(repos_file: Path) -> Dict[str, str]:
+    """Build {bundle_stem -> source URL/path} from a repos.txt URL list.
+
+    Keeps each entry exactly as written in repos.txt (URL or local path) so the
+    output CSV can carry the repo's original location. Blank lines and
+    comments (#) are skipped.
+    """
+    mapping: Dict[str, str] = {}
+    try:
+        lines = repos_file.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except OSError as exc:
+        logger.warning("Could not read repos file %s: %s", repos_file, exc)
+        return mapping
+
+    for line in lines:
+        url = line.strip()
+        if not url or url.startswith("#"):
+            continue
+        mapping[bundle_stem_from_url(url)] = url
+    return mapping
+
+
 def build_org_map(repos_file: Path) -> Dict[str, str]:
     """Build {bundle_stem -> repo_org} from a repos.txt URL list.
 

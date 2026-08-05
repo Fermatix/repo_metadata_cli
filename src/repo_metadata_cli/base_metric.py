@@ -80,6 +80,21 @@ class RepoContext:
         return ""
 
     @property
+    def repo_url(self) -> str:
+        # When launched from a repos.txt URL list, url_map carries the entry
+        # exactly as written there (URL or local path).
+        mapped = self.settings.url_map.get(self.bundle_name)
+        if mapped:
+            return mapped
+        # Directory/local mode has no URL list — fall back to the working
+        # copy's `origin` remote (raw URL, no sanitization); empty if none.
+        if self.bundle_path is None:
+            def _compute() -> str:
+                return run_cmd(["git", "remote", "get-url", "origin"], cwd=self.repo_path) or ""
+            return self._cached("repo_url_remote", _compute)
+        return ""
+
+    @property
     def repo_name(self) -> str:
         # Bundles are named by the full path (bundle_name); name_map recovers the
         # short leaf name. Falls back to bundle_name when no map (directory mode).

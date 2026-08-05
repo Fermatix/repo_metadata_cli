@@ -1,6 +1,13 @@
 """All metric classes in pipeline order (A → AA, AE, then v1-ported AF → AO)."""
 
-from .basic import DatasetIdMetric, DatasetNameMetric, NumReposMetric, RepoOrgMetric, VendorNameMetric
+from .basic import (
+    DatasetIdMetric,
+    DatasetNameMetric,
+    NumReposMetric,
+    RepoOrgMetric,
+    RepoUrlMetric,
+    VendorNameMetric,
+)
 from .repo_description import DescriptionMetric
 from .docs import (
     AvgFuncLengthMetric,
@@ -49,6 +56,7 @@ __all__ = [
     "DatasetIdMetric",
     "VendorNameMetric",
     "RepoOrgMetric",
+    "RepoUrlMetric",
     "DatasetNameMetric",
     "DescriptionMetric",
     "NumReposMetric",
