@@ -170,3 +170,29 @@ def test_repo_org_property_from_map():
     # missing -> empty string
     ctx2 = _ctx(Path("/tmp/bundles/other.bundle"), {})
     assert ctx2.repo_org == ""
+
+
+def test_build_url_map(tmp_path):
+    from repo_metadata_cli.partner import build_url_map
+
+    repos = tmp_path / "repos.txt"
+    urls = [
+        "git@gitlab.com:acme/sub/app_backend.git",
+        "https://gitlab.example.com/solo/web-app",
+        "# comment",
+        "",
+    ]
+    repos.write_text("\n".join(urls), encoding="utf-8")
+    m = build_url_map(repos)
+    assert m[bundle_stem_from_url(urls[0])] == urls[0]
+    assert m[bundle_stem_from_url(urls[1])] == urls[1]
+    assert len(m) == 2
+
+
+def test_repo_url_property_from_map():
+    ctx = _ctx(Path("/tmp/bundles/acme-app.bundle"), {})
+    ctx.settings.url_map = {"acme-app": "git@gitlab.com:acme/app.git"}
+    assert ctx.repo_url == "git@gitlab.com:acme/app.git"
+    # missing + bundle mode -> empty string (no git-remote fallback for bundles)
+    ctx2 = _ctx(Path("/tmp/bundles/other.bundle"), {})
+    assert ctx2.repo_url == ""
