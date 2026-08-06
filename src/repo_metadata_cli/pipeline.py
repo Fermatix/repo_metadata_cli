@@ -12,9 +12,16 @@ from tqdm import tqdm
 
 from .allowed_files import AllowedFiles
 from .base_metric import BaseMetric, RepoContext
+from .csv_migration import (
+    migrate_csv_schema,
+    rows_needing_backfill,
+    update_row_fields,
+    warn_unfilled_rows,
+)
 from .metrics import (  # metrics/ package — all metric classes via __init__.py
     AutoGenLocMetric,
     AvgFuncLengthMetric,
+    AvgLocPerPRMetric,
     BranchCountMetric,
     CommentRatioMetric,
     DepDirLocMetric,
@@ -47,6 +54,9 @@ from .metrics import (  # metrics/ package — all metric classes via __init__.p
     MonitoringMetric,
     NumReposMetric,
     PrimaryLanguageMetric,
+    PRRichPctMetric,
+    PRSimplePctMetric,
+    PRStandardPctMetric,
     RawLocMetric,
     ReadmeQualityMetric,
     RepoBundleMbMetric,
@@ -56,6 +66,7 @@ from .metrics import (  # metrics/ package — all metric classes via __init__.p
     SourceFilesMetric,
     StackMetric,
     SymbolsCountMetric,
+    TestCoveragePctMetric,
     TestSuiteMetric,
     TotalPRMetric,
     VendorNameMetric,
@@ -134,18 +145,44 @@ _EMPTY_COLUMNS: Dict[str, str] = {
     "unit_rate": "",      # AD
 }
 
+# Trailing metrics — the stable schema TAIL.  Appended after the pricing
+# placeholders so a freshly written CSV and a migrated legacy CSV (which gets
+# these columns appended after its last column) end with the same five columns.
+# Field names must stay in sync with csv_migration.NEW_COLUMNS.
+TRAILING_METRICS: list[Type[BaseMetric]] = [
+    PRSimplePctMetric,      # AX
+    PRStandardPctMetric,    # AY
+    PRRichPctMetric,        # AZ
+    AvgLocPerPRMetric,      # BA
+    TestCoveragePctMetric,  # BB
+]
 
-def run_pipeline(ctx: RepoContext) -> Dict[str, Any]:
-    """Compute all metrics for a single repository context."""
-    result: Dict[str, Any] = {}
-    for MetricClass in METRICS:
+
+def _compute_metric_values(
+    ctx: RepoContext,
+    metric_classes: list[Type[BaseMetric]],
+    result: Dict[str, Any],
+) -> None:
+    """Compute the given metrics into ``result``; a failure warns (with the
+    repository and metric name) and yields None for that value only."""
+    for MetricClass in metric_classes:
         metric = MetricClass()
         try:
             result[MetricClass.field_name] = metric.compute(ctx)
         except Exception as exc:
-            logger.warning("Metric %s failed: %s", MetricClass.field_name, exc)
+            logger.warning(
+                "Metric %s failed for %s: %s",
+                MetricClass.field_name, ctx.bundle_name, exc,
+            )
             result[MetricClass.field_name] = None
+
+
+def run_pipeline(ctx: RepoContext) -> Dict[str, Any]:
+    """Compute all metrics for a single repository context."""
+    result: Dict[str, Any] = {}
+    _compute_metric_values(ctx, METRICS, result)
     result.update(_EMPTY_COLUMNS)
+    _compute_metric_values(ctx, TRAILING_METRICS, result)
     return result
 
 
@@ -281,6 +318,43 @@ def _processed_repos(csv_path: Path) -> Set[str]:
     return processed
 
 
+def _backfill_repo_row(
+    item: Path,
+    local_mode: bool,
+    csv_path: Path,
+    settings: AppSettings,
+    allowed_files: AllowedFiles,
+    ts_manager: Optional[TreeSitterManager],
+    org: str,
+    leaf: str,
+    stem: str,
+) -> None:
+    """Recompute the trailing metrics for an already-processed repo and update
+    its existing CSV row in place (no new row is appended).
+
+    A metric that raises leaves its cell empty (retried next run); other
+    metrics and repositories continue unaffected.
+    """
+    values: Dict[str, Any] = {}
+    if local_mode:
+        ctx = build_local_repo_context(item, settings, allowed_files, ts_manager)
+        _compute_metric_values(ctx, TRAILING_METRICS, values)
+    else:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ctx = build_repo_context(item, settings, allowed_files, ts_manager, Path(tmpdir))
+            if ctx is None:
+                logger.warning(
+                    "Backfill of %s skipped: failed to materialize repository", stem
+                )
+                return
+            _compute_metric_values(ctx, TRAILING_METRICS, values)
+    if not update_row_fields(csv_path, org, leaf, stem, values):
+        logger.warning(
+            "Backfill: no CSV row matched %s (org=%r, name=%r); nothing updated.",
+            stem, org, leaf,
+        )
+
+
 def run_metadata_pipeline(
     dataset_dir: Path,
     csv_path: Path,
@@ -314,6 +388,12 @@ def run_metadata_pipeline(
         items = local_dirs
         local_mode = True
 
+    # Upgrade a legacy CSV in place: append the late-added columns (atomic,
+    # preserving all prior columns/values/rows), then plan the backfill of
+    # rows whose new cells are empty (fresh migration or a prior failure).
+    migrate_csv_schema(csv_path)
+    backfill_keys = rows_needing_backfill(csv_path)
+
     processed = _processed_repos(csv_path)
 
     for item in tqdm(items, desc="Metadata"):
@@ -324,7 +404,18 @@ def run_metadata_pipeline(
         leaf = settings.name_map.get(stem, stem)
         key = f"{org}\t{leaf}"
         if key in processed or stem in processed:
-            logger.debug("Skipping %s (already processed)", stem)
+            if key in backfill_keys or leaf in backfill_keys or stem in backfill_keys:
+                logger.info("Backfilling new columns for %s", stem)
+                try:
+                    _backfill_repo_row(
+                        item, local_mode, csv_path, settings, allowed_files,
+                        ts_manager, org, leaf, stem,
+                    )
+                except Exception as exc:
+                    # One broken repo must not block the rest of the run.
+                    logger.warning("Backfill of %s failed: %s", stem, exc)
+            else:
+                logger.debug("Skipping %s (already processed)", stem)
             continue
 
         if local_mode:
@@ -357,5 +448,10 @@ def run_metadata_pipeline(
         # duplicate item within this run is not reprocessed.
         processed.add(key)
         processed.add(stem)
+
+    # Rows whose new columns are still empty (source repo absent from this
+    # dataset, or computation failed) are kept as-is and reported; the empty
+    # cells make them retryable on the next run.
+    warn_unfilled_rows(csv_path)
 
     logger.info("Metadata pipeline finished; %d repositories processed.", len(processed))

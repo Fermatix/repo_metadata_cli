@@ -40,6 +40,10 @@ _HG_HOST_RE = re.compile(
 _NO_MERGES = "not merge()"
 _MERGES = "merge()"
 
+# Record separators for one-shot templated log parsing (node vs description);
+# match the GitVCS separators so both backends parse identically.
+_H_SEP, _E_SEP = "\x01", "\x02"
+
 
 def _hg_env() -> Dict[str, str]:
     """Environment for hermetic, scriptable hg output."""
@@ -229,3 +233,68 @@ class MercurialVCS(BaseVCS):
             ["log", "-r", _NO_MERGES, "-T", "{desc|firstline}\n", "-l", str(limit)],
             cwd=repo_path,
         )
+
+    # --- PR size units (columns AX-BA) ---------------------------------------
+    # Equivalent deterministic methodology to GitVCS: fingerprinted PR/MR units
+    # when present in changeset descriptions, else merge changesets, else plain
+    # changesets.  ``reverse(...)`` orders newest-first to mirror `git log`, so
+    # the MAX_PR_UNITS cap keeps the same (most recent) units on both VCSes.
+    def pr_fingerprint_units(self, repo_path: Path) -> List[Tuple[str, str]]:
+        from ..metric_utils import _GITHUB_PR_RE, _GITHUB_SQUASH_RE, _GITLAB_MR_RE
+
+        units: List[Tuple[str, str]] = []
+        seen: Set[Tuple[str, str]] = set()
+        out = _hg_text(
+            ["log", "-r", f"reverse({_MERGES})", "-T", f"{{node}}{_H_SEP}{{desc}}{_E_SEP}"],
+            cwd=repo_path,
+        )
+        for rec in out.split(_E_SEP):
+            h, _, body = rec.strip("\n").partition(_H_SEP)
+            h = h.strip()
+            if not h:
+                continue
+            m = _GITHUB_PR_RE.search(body)
+            key = ("gh", m.group(1)) if m else None
+            if key is None:
+                m = _GITLAB_MR_RE.search(body)
+                key = ("gl", m.group(1)) if m else None
+            if key and key not in seen:
+                seen.add(key)
+                units.append((h, "merge"))
+        out = _hg_text(
+            ["log", "-r", f"reverse({_NO_MERGES})", "-T", f"{{node}}{_H_SEP}{{desc|firstline}}\n"],
+            cwd=repo_path,
+        )
+        for line in out.splitlines():
+            h, _, subj = line.partition(_H_SEP)
+            m = _GITHUB_SQUASH_RE.search(subj)
+            if m and h:
+                key = ("gh", m.group(1))
+                if key not in seen:
+                    seen.add(key)
+                    units.append((h, "commit"))
+        return units
+
+    def merge_unit_revs(self, repo_path: Path) -> List[str]:
+        # Fallback bases walk the working-copy parent's line only, mirroring
+        # git's HEAD-only `git log --merges` fallback.
+        out = _hg_text(
+            ["log", "-r", f"reverse(ancestors(.) and {_MERGES})", "-T", "{node}\n"],
+            cwd=repo_path,
+        )
+        return [h for h in out.split() if h]
+
+    def commit_unit_revs(self, repo_path: Path) -> List[str]:
+        out = _hg_text(
+            ["log", "-r", f"reverse(ancestors(.) and {_NO_MERGES})", "-T", "{node}\n"],
+            cwd=repo_path,
+        )
+        return [h for h in out.split() if h]
+
+    def unit_changed_lines(self, repo_path: Path, rev: str, kind: str) -> int:
+        from ..pr_size_stats import parse_changed_lines  # late import: avoid cycle
+
+        # `hg diff -c REV` diffs against the first parent for merge changesets
+        # and against the sole parent otherwise — covering both unit kinds.
+        out = _hg_text(["diff", "-c", rev, "--stat"], cwd=repo_path)
+        return parse_changed_lines(out)

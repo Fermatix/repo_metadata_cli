@@ -19,6 +19,10 @@ logger = logging.getLogger(__name__)
 
 _CLONE_TIMEOUT = 720  # 10 min — enough for a 4+ GB bundle on a slow disk
 
+# Record separators for one-shot `git log --format` parsing (hash vs body):
+# control chars never appear in commit messages in practice.
+_H_SEP, _E_SEP = "\x01", "\x02"
+
 
 class GitVCS(BaseVCS):
     name: ClassVar[str] = "git"
@@ -171,6 +175,68 @@ class GitVCS(BaseVCS):
             ["git", "log", "--all", "--no-merges", "--format=%s", "-n", str(limit)],
             cwd=repo_path,
         )
+
+    # --- PR size units (columns AX-BA) ---------------------------------------
+    def pr_fingerprint_units(self, repo_path: Path) -> List[Tuple[str, str]]:
+        # Fingerprints are scanned across ALL refs (--all), mirroring the
+        # count_pull_requests detection that feeds total_pr_count.
+        from ..metric_utils import _GITHUB_PR_RE, _GITHUB_SQUASH_RE, _GITLAB_MR_RE
+
+        units: List[Tuple[str, str]] = []
+        seen: set[Tuple[str, str]] = set()
+        out = run_cmd(
+            ["git", "log", "--all", "--merges", f"--format=%H{_H_SEP}%B{_E_SEP}"],
+            cwd=repo_path,
+        )
+        for rec in out.split(_E_SEP):
+            h, _, body = rec.strip("\n").partition(_H_SEP)
+            h = h.strip()
+            if not h:
+                continue
+            m = _GITHUB_PR_RE.search(body)
+            key = ("gh", m.group(1)) if m else None
+            if key is None:
+                m = _GITLAB_MR_RE.search(body)
+                key = ("gl", m.group(1)) if m else None
+            if key and key not in seen:
+                seen.add(key)
+                units.append((h, "merge"))
+        out = run_cmd(
+            ["git", "log", "--all", "--no-merges", f"--format=%H{_H_SEP}%s"],
+            cwd=repo_path,
+        )
+        for line in out.splitlines():
+            h, _, subj = line.partition(_H_SEP)
+            m = _GITHUB_SQUASH_RE.search(subj)
+            if m and h:
+                key = ("gh", m.group(1))
+                if key not in seen:
+                    seen.add(key)
+                    units.append((h, "commit"))
+        return units
+
+    def merge_unit_revs(self, repo_path: Path) -> List[str]:
+        # Fallback bases walk the checked-out line only (no --all): local and
+        # sync merges of other branches must not enter the distribution twice.
+        out = run_cmd(["git", "log", "--merges", "--format=%H"], cwd=repo_path)
+        return [h for h in out.split() if h]
+
+    def commit_unit_revs(self, repo_path: Path) -> List[str]:
+        out = run_cmd(["git", "log", "--no-merges", "--format=%H"], cwd=repo_path)
+        return [h for h in out.split() if h]
+
+    def unit_changed_lines(self, repo_path: Path, rev: str, kind: str) -> int:
+        from ..pr_size_stats import parse_changed_lines  # late import: avoid cycle
+
+        if kind == "merge":
+            out = run_cmd(
+                ["git", "diff", "--shortstat", "-M", f"{rev}^1", rev], cwd=repo_path
+            )
+        else:
+            out = run_cmd(
+                ["git", "show", "--shortstat", "--format=", "-M", rev], cwd=repo_path
+            )
+        return parse_changed_lines(out)
 
     # --- commit-hash provenance / identity fingerprints (cols AQ-AU) ---------
     def root_commit_hashes(self, repo_path: Path) -> List[str]:

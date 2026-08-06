@@ -479,6 +479,7 @@ def test_hg_fork_upstream_in_alias_is_not_fork(tmp_path):
 
 def test_incremental_csv_schema_mismatch_does_not_corrupt(tmp_path):
     import pandas as pd
+    from repo_metadata_cli.csv_migration import NEW_COLUMNS
     from repo_metadata_cli.pipeline import run_metadata_pipeline
 
     # Seed an old, narrower schema.
@@ -492,7 +493,16 @@ def test_incremental_csv_schema_mismatch_does_not_corrupt(tmp_path):
     run_metadata_pipeline(dataset, csv, _settings(),
                           AllowedFiles(AllowedFilesConfig(config_file=_TOML)), None)
 
-    # File must remain parseable (no ragged rows) and have both repos.
+    # File must remain parseable (no ragged rows) and have both repos.  The
+    # legacy header is preserved, with ONLY the late-added columns appended by
+    # the schema migration (they must not be silently dropped anymore).
     df = pd.read_csv(csv)
     assert set(df["repo_name"]) == {"alpha", "beta"}
-    assert list(df.columns) == ["repo_id", "repo_name", "commit_count"]
+    assert list(df.columns) == ["repo_id", "repo_name", "commit_count", *NEW_COLUMNS]
+    # alpha has no source repo in the dataset: kept, new cells left empty.
+    alpha = df[df["repo_name"] == "alpha"].iloc[0]
+    assert alpha["commit_count"] == 3
+    assert all(pd.isna(alpha[c]) for c in NEW_COLUMNS)
+    # beta is new: its trailing metrics are filled (plain dir -> zeros).
+    beta = df[df["repo_name"] == "beta"].iloc[0]
+    assert all(int(beta[c]) == 0 for c in NEW_COLUMNS)
