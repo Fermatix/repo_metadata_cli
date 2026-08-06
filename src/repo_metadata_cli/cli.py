@@ -110,6 +110,13 @@ def metadata(
     automatically from each bundle's git history, so the mirror URL in repos.txt does
     not cause zero counts.
 
+    Every run also computes the PR size distribution (pr_simple_pct /
+    pr_standard_pct / pr_rich_pct, avg_loc_per_pr) and test_coverage_pct — a
+    STATIC test-to-code LOC ratio (no tests are executed; this is not runtime
+    coverage).  An --output-csv file written by an older version is migrated
+    automatically: the new columns are appended and backfilled for repositories
+    present in the current input, without duplicating rows.
+
     Example (all-in-one):
 
         repo-metadata metadata repos.txt \\

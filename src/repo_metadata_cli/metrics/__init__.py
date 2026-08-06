@@ -27,6 +27,7 @@ from .files import (
     StackMetric,
 )
 from .git import (
+    AvgLocPerPRMetric,
     BranchCountMetric,
     CommitCountMetric,
     CommitMinhashMetric,
@@ -36,6 +37,9 @@ from .git import (
     FirstCommitHashMetric,
     MetadataBranchNameMetric,
     MetadataCommitHashMetric,
+    PRRichPctMetric,
+    PRSimplePctMetric,
+    PRStandardPctMetric,
     ReviewedPRMetric,
     TotalPRMetric,
 )
@@ -50,7 +54,7 @@ from .loc import (
 )
 from .quality import DuplicationMetric, ForkPctMetric
 from .size import GitHistoryMbMetric, RepoBundleMbMetric, WorktreeMbMetric
-from .testing import TestSuiteMetric
+from .testing import TestCoveragePctMetric, TestSuiteMetric
 
 __all__ = [
     "DatasetIdMetric",
@@ -103,4 +107,11 @@ __all__ = [
     "CommitMinhashMetric",
     # unfiltered language distribution (AV) — diagnostic counterpart of M
     "FullLangDistributionMetric",
+    # PR size distribution + static test-coverage estimate (AX-BB), appended
+    # to the stable schema tail (after the pricing placeholders)
+    "PRSimplePctMetric",
+    "PRStandardPctMetric",
+    "PRRichPctMetric",
+    "AvgLocPerPRMetric",
+    "TestCoveragePctMetric",
 ]

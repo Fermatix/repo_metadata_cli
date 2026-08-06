@@ -122,6 +122,30 @@ class RepoContext:
         )
 
     @property
+    def tracked_files(self) -> list[str]:
+        """FULL tracked-file list (repo-relative, '/'-separated), cached.
+
+        VCS-tracked paths when available; in plain-directory mode (no VCS
+        history) falls back to a filesystem walk that skips dot-directories.
+        Consumed by test_coverage_pct, which must see every file — unlike the
+        diagnostic ``file_tree`` below, which truncates to 40 paths.
+        """
+        def _compute() -> list[str]:
+            tracked = self.vcs.tracked_files(self.repo_path)
+            if tracked:
+                return tracked
+            return sorted(
+                p.relative_to(self.repo_path).as_posix()
+                for p in self.repo_path.rglob("*")
+                if p.is_file()
+                and not any(
+                    part.startswith(".")
+                    for part in p.relative_to(self.repo_path).parts
+                )
+            )
+        return self._cached("tracked_files", _compute)
+
+    @property
     def file_tree(self) -> list[str]:
         """Up to 40 file paths (VCS-tracked when available, filesystem walk otherwise)."""
         def _compute() -> list[str]:
