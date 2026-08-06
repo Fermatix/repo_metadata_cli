@@ -89,6 +89,45 @@ class BaseVCS(ABC):
         """
         return ""
 
+    # --- full tracked-file list (test_coverage_pct input) --------------------
+    def tracked_files(self, repo_path: Path) -> List[str]:
+        """COMPLETE list of tracked file paths (repo-relative, '/'-separated).
+
+        Unlike the diagnostic ``RepoContext.file_tree`` (truncated to 40 paths),
+        consumers of this method get every tracked file.  The default delegates
+        to ``file_tree``, which both backends already return in full; the
+        caller (``RepoContext.tracked_files``) adds a filesystem fallback for
+        plain-directory mode, where this returns [].
+        """
+        return self.file_tree(repo_path)
+
+    # --- PR size units (columns AX-BA: pr_*_pct / avg_loc_per_pr) ------------
+    # Defaults return empty/zero so a plain directory (no VCS) degrades to the
+    # agreed all-zero PR size distribution.
+    def pr_fingerprint_units(self, repo_path: Path) -> List[Tuple[str, str]]:
+        """Real platform PRs/MRs detected from history fingerprints.
+
+        Returns ``[(revision, kind)]`` where kind is ``"merge"`` (GitHub
+        "Merge pull request #N" / GitLab "See merge request ...!N" merge
+        commits — measured as the diff to the first parent) or ``"commit"``
+        (GitHub squash merges, subject ending in "(#N)" — measured as the
+        commit's own diff).  Deduplicated by (platform, PR number), merge
+        fingerprints first.  [] when the history carries no fingerprints.
+        """
+        return []
+
+    def merge_unit_revs(self, repo_path: Path) -> List[str]:
+        """Merge revisions on the checked-out line, newest first (first fallback)."""
+        return []
+
+    def commit_unit_revs(self, repo_path: Path) -> List[str]:
+        """Non-merge revisions on the checked-out line, newest first (last fallback)."""
+        return []
+
+    def unit_changed_lines(self, repo_path: Path, rev: str, kind: str) -> int:
+        """Changed lines (additions + deletions) of one PR unit; 0 on failure."""
+        return 0
+
     # --- commit-hash provenance / identity fingerprints (cols AQ-AU) ---------
     # Default to empty so a backend that can't produce stable commit ids just
     # yields blank fingerprints. GitVCS overrides all four.

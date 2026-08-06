@@ -84,6 +84,67 @@ class ReviewedPRMetric(BaseMetric):
         return 0
 
 
+def _pr_size_stats(ctx: RepoContext) -> dict:
+    """Shared cached PR size distribution (columns AX-BA).
+
+    Gated on the SAME effective total_pr_count that column P reports (PR cache
+    when trusted, git-log fingerprint fallback otherwise): a repository with no
+    PRs gets the agreed zeros instead of a commit-size distribution.  Computed
+    once per repository; the four metric classes read their field from the
+    cached dict.
+    """
+    from ..pr_size_stats import collect_pr_size_stats  # late import: avoid cycle
+
+    def _compute() -> dict:
+        try:
+            total_pr = int(TotalPRMetric().compute(ctx) or 0)
+        except (TypeError, ValueError):
+            total_pr = 0
+        return collect_pr_size_stats(ctx.vcs, ctx.repo_path, total_pr)
+
+    return ctx._cached("pr_size_stats", _compute)
+
+
+class PRSimplePctMetric(BaseMetric):
+    """AX: % of PR units with at most 50 changed lines (additions + deletions)."""
+
+    column = "AX"
+    field_name = "pr_simple_pct"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return _pr_size_stats(ctx)["pr_simple_pct"]
+
+
+class PRStandardPctMetric(BaseMetric):
+    """AY: % of PR units with 51-300 changed lines."""
+
+    column = "AY"
+    field_name = "pr_standard_pct"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return _pr_size_stats(ctx)["pr_standard_pct"]
+
+
+class PRRichPctMetric(BaseMetric):
+    """AZ: % of PR units with more than 300 changed lines."""
+
+    column = "AZ"
+    field_name = "pr_rich_pct"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return _pr_size_stats(ctx)["pr_rich_pct"]
+
+
+class AvgLocPerPRMetric(BaseMetric):
+    """BA: Average changed lines (additions + deletions) per PR unit, rounded."""
+
+    column = "BA"
+    field_name = "avg_loc_per_pr"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return _pr_size_stats(ctx)["avg_loc_per_pr"]
+
+
 class BranchCountMetric(BaseMetric):
     """AH: Number of distinct branches in the repository.
 
