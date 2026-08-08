@@ -25,7 +25,10 @@ from repo_metadata_cli.coverage_estimate import (
     is_test_file,
     is_vendored_path,
 )
-from repo_metadata_cli.metrics.testing import TestCoveragePctMetric
+from repo_metadata_cli.metrics.testing import (
+    TestCoveragePctMetric,
+    UntestedFilesPctMetric,
+)
 from repo_metadata_cli.settings import load_app_settings
 from repo_metadata_cli.vcs.git import GitVCS
 from repo_metadata_cli.vcs.mercurial import MercurialVCS
@@ -153,7 +156,14 @@ def test_coverage_stats_mixed_repo(tmp_path):
     files = [str(p.relative_to(repo)) for p in repo.rglob("*") if p.is_file()]
     stats = coverage_stats(repo, files)
     # Golden values from the reference implementation on this exact layout.
-    assert stats == {"test_coverage_pct": 40, "total_code_lines": 100, "test_code_lines": 40}
+    assert stats == {
+        "test_coverage_pct": 40,
+        "untested_files_pct": 33,  # 1 non-test file out of 3 code files
+        "total_code_lines": 100,
+        "test_code_lines": 40,
+        "total_code_files": 3,
+        "test_code_files": 2,
+    }
 
 
 def test_coverage_stats_skips_binary_code_file(tmp_path):
@@ -188,13 +198,21 @@ def test_coverage_capped_at_100(tmp_path):
     _write(repo, "tests/test_all.py", "t = 1\n" * 50)
     stats = coverage_stats(repo, ["tests/test_all.py"])
     assert stats["test_coverage_pct"] == 100
+    assert stats["untested_files_pct"] == 0
 
 
 def test_no_tests_yields_zero(tmp_path):
     repo = tmp_path / "r"
     _write(repo, "src/app.py", "x = 1\n" * 50)
     stats = coverage_stats(repo, ["src/app.py"])
-    assert stats == {"test_coverage_pct": 0, "total_code_lines": 50, "test_code_lines": 0}
+    assert stats == {
+        "test_coverage_pct": 0,
+        "untested_files_pct": 100,  # code with zero tests: every file untested
+        "total_code_lines": 50,
+        "test_code_lines": 0,
+        "total_code_files": 1,
+        "test_code_files": 0,
+    }
 
 
 def test_no_code_files_yields_zero(tmp_path):
@@ -202,7 +220,14 @@ def test_no_code_files_yields_zero(tmp_path):
     _write(repo, "README.md", "doc\n" * 30)
     _write(repo, "data.json", "{}\n")
     stats = coverage_stats(repo, ["README.md", "data.json"])
-    assert stats == {"test_coverage_pct": 0, "total_code_lines": 0, "test_code_lines": 0}
+    assert stats == {
+        "test_coverage_pct": 0,
+        "untested_files_pct": 0,
+        "total_code_lines": 0,
+        "test_code_lines": 0,
+        "total_code_files": 0,
+        "test_code_files": 0,
+    }
 
 
 def test_coverage_rounding(tmp_path):
@@ -290,4 +315,6 @@ def test_coverage_metric_uses_vcs_tracked_files(tmp_path):
     _write(repo, "scratch.py", "n = 1\n" * 1000)
     ctx = _ctx(repo, vcs=GitVCS())
     assert TestCoveragePctMetric().compute(ctx) == 20
-    assert ctx._cache["test_coverage_pct"] == 20  # cached for reuse
+    # one shared walk for the BB/BE metrics, cached for reuse
+    assert ctx._cache["coverage_stats"]["test_coverage_pct"] == 20
+    assert UntestedFilesPctMetric().compute(ctx) == 50    # 1 of 2 files

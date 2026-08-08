@@ -20,8 +20,9 @@ At most :data:`MAX_PR_UNITS` units are analysed.  Percentages and the average
 are rounded with Python's :func:`round` (banker's rounding).
 
 Zero semantics (agreed, not an error): when the pipeline's effective
-``total_pr_count`` is 0, when history is too short (fewer than two commits and
-no merges), or when no unit can be formed, all four columns are 0.
+merged-PR count (``merged_pr_count``, cache-or-fingerprints) is 0, when
+history is too short (fewer than two commits and no merges), or when no unit
+can be formed, all four columns are 0.
 """
 
 from __future__ import annotations
@@ -59,16 +60,16 @@ def zero_pr_size_stats() -> Dict[str, int]:
 
 
 def collect_pr_size_stats(
-    vcs: "BaseVCS", repo_path: Path, total_pr_count: int
+    vcs: "BaseVCS", repo_path: Path, merged_pr_count: int
 ) -> Dict[str, int]:
     """Compute the PR size distribution for one repository.
 
-    ``total_pr_count`` is the pipeline's effective column-P value (PR cache or
-    history-fingerprint fallback).  The distribution describes PRs, so when the
-    repository has none the four fields are 0 — a commit-size distribution is
-    not passed off as PR statistics.
+    ``merged_pr_count`` is the pipeline's effective merged-PR value (PR cache
+    or history-fingerprint fallback).  The size units come from history, i.e.
+    from merged PRs, so when the repository has none the four fields are 0 —
+    a commit-size distribution is not passed off as PR statistics.
     """
-    if total_pr_count <= 0:
+    if merged_pr_count <= 0:
         return zero_pr_size_stats()
 
     units = vcs.pr_fingerprint_units(repo_path)[:MAX_PR_UNITS]
