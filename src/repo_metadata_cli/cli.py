@@ -59,7 +59,7 @@ def metadata(
     ),
     output_csv: Path = typer.Option(Path("repo_metadata.csv"), "--output-csv", help="Where to store metadata CSV."),
     config_file: Path = typer.Option(Path("repo_metadata.toml"), help="TOML config file path."),
-    skip_tree_sitter: bool = typer.Option(False, help="Skip Tree-sitter metrics (docstring ratio, avg function length)."),
+    skip_tree_sitter: bool = typer.Option(False, help="Skip Tree-sitter metrics (docstring ratio, avg function length, function/class counts)."),
     bundles_dir: Path = typer.Option(
         Path("./tmp/bundles"),
         help="Where to store fetched *.bundle files (only used when dataset_path is a .txt file).",
@@ -111,11 +111,15 @@ def metadata(
     not cause zero counts.
 
     Every run also computes the PR size distribution (pr_simple_pct /
-    pr_standard_pct / pr_rich_pct, avg_loc_per_pr) and test_coverage_pct — a
-    STATIC test-to-code LOC ratio (no tests are executed; this is not runtime
-    coverage).  An --output-csv file written by an older version is migrated
-    automatically: the new columns are appended and backfilled for repositories
-    present in the current input, without duplicating rows.
+    pr_standard_pct / pr_rich_pct, avg_loc_per_pr), the static test estimates
+    (test_coverage_pct, untested_files_pct — no tests are executed; this is
+    not runtime coverage), the tree-sitter symbol counts (functions_count,
+    classes_count) and merged_pr_count (API when available, git fingerprints
+    otherwise; total_pr_count then holds the all-states total from the API or
+    equals merged when only history is available).  An --output-csv file
+    written by an older version is migrated automatically: the new columns
+    are appended and backfilled for repositories present in the current
+    input, without duplicating rows.
 
     Example (all-in-one):
 
@@ -216,6 +220,7 @@ def metadata(
     ts_config = TreeSitterConfig(
         extension_language_map=settings.tree_sitter.extension_language_map,
         lang_func_node_types=settings.tree_sitter.lang_func_node_types,
+        lang_class_node_types=settings.tree_sitter.lang_class_node_types,
         language_packages=settings.tree_sitter.language_packages,
     )
     allowed_files = _build_allowed_files(config_file)

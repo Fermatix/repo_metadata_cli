@@ -68,5 +68,8 @@ def is_utf8_file(path: Path, sample_size: int = 4096) -> bool:
     try:
         chunk.decode("utf-8")
         return True
-    except UnicodeDecodeError:
-        return False
+    except UnicodeDecodeError as exc:
+        # A full-size sample may split a multibyte character at its end (a
+        # UTF-8 code point is up to 4 bytes) — that is not evidence of a
+        # binary file.  A short read reached EOF, so there the error is real.
+        return len(chunk) == sample_size and exc.start >= len(chunk) - 3

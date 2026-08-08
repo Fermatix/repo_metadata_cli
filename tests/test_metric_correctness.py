@@ -503,6 +503,8 @@ def test_incremental_csv_schema_mismatch_does_not_corrupt(tmp_path):
     alpha = df[df["repo_name"] == "alpha"].iloc[0]
     assert alpha["commit_count"] == 3
     assert all(pd.isna(alpha[c]) for c in NEW_COLUMNS)
-    # beta is new: its trailing metrics are filled (plain dir -> zeros).
+    # beta is new: its trailing metrics are filled (plain dir -> zeros,
+    # except untested_files_pct: one code file with no tests = 100).
     beta = df[df["repo_name"] == "beta"].iloc[0]
-    assert all(int(beta[c]) == 0 for c in NEW_COLUMNS)
+    expected = dict.fromkeys(NEW_COLUMNS, 0) | {"untested_files_pct": 100}
+    assert {c: int(beta[c]) for c in NEW_COLUMNS} == expected

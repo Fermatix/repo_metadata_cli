@@ -66,11 +66,15 @@ def _make_repo(dataset: Path, name: str) -> Path:
     return repo
 
 
-# Expected trailing values for _make_repo: one squash PR unit of 30 lines and
-# a 20/130 test-to-code ratio.
+# Expected trailing values for _make_repo: one squash PR unit of 30 lines
+# (fingerprint -> merged_pr_count=1), 20 test lines vs 130 total, 1 test file
+# out of 3; functions/classes are 0 because the pipeline runs with
+# ts_manager=None.
 _EXPECTED = {
     "pr_simple_pct": 100, "pr_standard_pct": 0, "pr_rich_pct": 0,
     "avg_loc_per_pr": 30, "test_coverage_pct": 15,
+    "functions_count": 0, "classes_count": 0,
+    "untested_files_pct": 67, "merged_pr_count": 1,
 }
 
 assert set(_EXPECTED) == set(NEW_COLUMNS)
@@ -95,6 +99,30 @@ def test_migrate_adds_columns_preserving_everything(tmp_path):
     assert df.loc[1, "raw_loc"] == "0.500"                 # no numeric re-formatting
     assert all(df.loc[i, c] == "" for i in (0, 1) for c in NEW_COLUMNS)
     assert not csv.with_name(csv.name + ".tmp").exists()   # atomic write cleaned up
+
+
+def test_backfill_refreshes_pr_columns_for_consistency(tmp_path):
+    # A legacy row's total/reviewed may predate the current PR source; writing
+    # a fresh merged_pr_count next to them would violate merged <= total, so
+    # the backfill refreshes the whole PR triple from the same source.
+    dataset = tmp_path / "data"
+    _make_repo(dataset, "alpha")
+    csv = tmp_path / "meta.csv"
+    _run(dataset, csv)
+
+    df = pd.read_csv(csv, dtype=str, keep_default_na=False)
+    df = df.drop(columns=list(NEW_COLUMNS))
+    df["total_pr_count"] = "999"      # stale value from an older era
+    df["reviewed_pr_count"] = "500"
+    df.to_csv(csv, index=False)
+
+    _run(dataset, csv)
+
+    out = pd.read_csv(csv, dtype=str, keep_default_na=False)
+    row = out.iloc[0]
+    assert row["merged_pr_count"] == "1"       # squash fingerprint
+    assert row["total_pr_count"] == "1"        # refreshed, not left at 999
+    assert row["reviewed_pr_count"] == "0"     # refreshed (no cache -> 0)
 
 
 def test_migrate_noop_on_current_schema(tmp_path):
@@ -175,10 +203,10 @@ def test_fresh_csv_has_new_columns_at_schema_tail(tmp_path):
     csv = tmp_path / "meta.csv"
     _run(dataset, csv)
     df = pd.read_csv(csv)
-    assert list(df.columns)[-5:] == list(NEW_COLUMNS)
+    assert list(df.columns)[-len(NEW_COLUMNS):] == list(NEW_COLUMNS)
     row = df.iloc[0]
     for field, expected in _EXPECTED.items():
-        assert int(row[field]) == expected, field
+        assert float(row[field]) == expected, field
 
 
 def test_legacy_csv_migrated_and_backfilled_without_duplicates(tmp_path, caplog):
@@ -204,10 +232,10 @@ def test_legacy_csv_migrated_and_backfilled_without_duplicates(tmp_path, caplog)
     # no duplicate rows; order preserved; extra column intact
     assert list(out["repo_name"]) == ["alpha", "ghost"]
     assert list(out["custom_note"]) == ["keep", "keep too"]
-    assert list(out.columns)[-5:] == list(NEW_COLUMNS)
+    assert list(out.columns)[-len(NEW_COLUMNS):] == list(NEW_COLUMNS)
     alpha = out[out["repo_name"] == "alpha"].iloc[0]
     for field, expected in _EXPECTED.items():
-        assert int(alpha[field]) == expected, field
+        assert float(alpha[field]) == expected, field
     # the ghost row is kept, its new cells stay empty, and a warning names it
     ghost_row = out[out["repo_name"] == "ghost"].iloc[0]
     assert all(ghost_row[c] == "" for c in NEW_COLUMNS)

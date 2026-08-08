@@ -1,8 +1,10 @@
-"""Static test-coverage estimate (column BB, ``test_coverage_pct``).
+"""Static test-vs-code estimates (columns BB ``test_coverage_pct``,
+BE ``untested_files_pct``).
 
-This is a test-to-code LOC ratio, NOT runtime coverage: no tests are executed.
-The metric is the share of test-file lines among all code lines of the tracked
-(non-vendored) tree, capped at 100.
+These are LOC/file-count heuristics, NOT runtime coverage: no tests are
+executed.  ``test_coverage_pct`` is the share of test-file lines among all
+code lines of the tracked (non-vendored) tree, capped at 100.
+``untested_files_pct`` is the share of code files that are not test files.
 
 Only code files count (``CODE_EXTENSIONS``; generated files excluded by
 ``GENERATED_FILE_RE``), so lock files, JSON/YAML fixtures, Markdown, SVG and
@@ -108,13 +110,21 @@ def is_code_file(path: str) -> bool:
 
 
 def coverage_stats(repo_path: Path, files: List[str]) -> Dict[str, int]:
-    """Test-to-code ratio over the given tracked-file list.
+    """Test-vs-code statistics over the given tracked-file list.
 
-    Returns ``test_coverage_pct`` (0..100), ``total_code_lines`` and
-    ``test_code_lines``.  ``test_coverage_pct`` is 0 when there are no code
-    lines at all.
+    Returns:
+
+    * ``test_coverage_pct`` (int 0..100) — share of test-file lines among ALL
+      code lines (tests included in the denominator), capped at 100;
+    * ``untested_files_pct`` (int 0..100) — share of code files that are not
+      test files;
+    * ``total_code_lines``, ``test_code_lines``, ``total_code_files``,
+      ``test_code_files`` — the raw tallies.
+
+    All percentages are 0 when the repo has no code at all.
     """
     total = test = 0
+    total_files = test_files = 0
     for f in files:
         if is_vendored_path(f) or not is_code_file(f):
             continue
@@ -129,7 +139,17 @@ def coverage_stats(repo_path: Path, files: List[str]) -> Dict[str, int]:
         except OSError:
             continue
         total += loc
+        total_files += 1
         if is_test_file(f):
             test += loc
+            test_files += 1
     pct = min(100, round(100 * test / total)) if total else 0
-    return {"test_coverage_pct": pct, "total_code_lines": total, "test_code_lines": test}
+    untested_pct = round(100 * (total_files - test_files) / total_files) if total_files else 0
+    return {
+        "test_coverage_pct": pct,
+        "untested_files_pct": untested_pct,
+        "total_code_lines": total,
+        "test_code_lines": test,
+        "total_code_files": total_files,
+        "test_code_files": test_files,
+    }

@@ -45,26 +45,73 @@ class ContributorsMetric(BaseMetric):
         )
 
 
-class TotalPRMetric(BaseMetric):
-    """P: Total merged PRs/MRs.
+def _trusted_cache_entry(ctx: RepoContext) -> Any:
+    """The pr_cache entry for this repo, or None when it must not be trusted.
 
-    Uses pr_cache (from enrich-prs command) when available — more accurate than
-    git log pattern matching.  Falls back to git log detection otherwise.
+    Only a non-zero total is trusted: a zero means either the API was queried
+    against a mirror URL (no MRs live on the mirror) or the project was
+    genuinely empty — the caller falls back to git-log detection so active
+    repos are not silently reported as 0.
+    """
+    entry = ctx.settings.pr_cache.get(ctx.bundle_name)
+    if entry is not None and entry.get("total_pr", 0) > 0:
+        return entry
+    return None
+
+
+def _fingerprint_pr_count(ctx: RepoContext) -> int:
+    """Merged PRs/MRs detected from history fingerprints (cached per repo)."""
+    total, _ = ctx._cached("pr_counts", lambda: ctx.vcs.count_pull_requests(ctx.repo_path))
+    return total
+
+
+def _merged_pr_count(ctx: RepoContext) -> int:
+    """Effective merged-PR count: API cache when trusted, fingerprints else.
+
+    Old-format cache entries (written before ``merged_pr`` existed) were
+    produced by the state=merged enricher, so their ``total_pr`` IS the
+    merged count — for them total and merged coincide.
+    """
+    entry = _trusted_cache_entry(ctx)
+    if entry is not None:
+        return entry.get("merged_pr", entry["total_pr"])
+    return _fingerprint_pr_count(ctx)
+
+
+class TotalPRMetric(BaseMetric):
+    """P: Total PRs/MRs across ALL states (merged + open + closed).
+
+    The all-states count exists only in the hosting API (pr_cache from the
+    enrich-prs command).  Without a trusted cache entry the metric falls back
+    to git-history fingerprints, which by nature see merged PRs only — the
+    fallback therefore equals merged_pr_count (BF), an honest "total unknown".
+    Old-format cache entries (state=merged enricher, no ``merged_pr`` key)
+    behave the same way: total == merged.
     """
 
     column = "P"
     field_name = "total_pr_count"
 
     def compute(self, ctx: RepoContext) -> Any:
-        entry = ctx.settings.pr_cache.get(ctx.bundle_name)
-        # Only trust the cache when it returned a non-zero count.  A zero means
-        # either the API was queried against a mirror URL (no MRs on the mirror)
-        # or the project was genuinely empty — fall back to git log detection so
-        # we don't silently report 0 for active repos.
-        if entry is not None and entry.get("total_pr", 0) > 0:
+        entry = _trusted_cache_entry(ctx)
+        if entry is not None:
             return entry["total_pr"]
-        total, _ = ctx._cached("pr_counts", lambda: ctx.vcs.count_pull_requests(ctx.repo_path))
-        return total
+        return _fingerprint_pr_count(ctx)
+
+
+class MergedPRMetric(BaseMetric):
+    """BF: Merged PRs/MRs.
+
+    API cache when available (exact), git-history fingerprints otherwise
+    (merge/squash commit patterns — undercounts fast-forward and non-standard
+    squash workflows).  Schema-tail column; see also total_pr_count (P).
+    """
+
+    column = "BF"
+    field_name = "merged_pr_count"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return _merged_pr_count(ctx)
 
 
 class ReviewedPRMetric(BaseMetric):
@@ -87,9 +134,11 @@ class ReviewedPRMetric(BaseMetric):
 def _pr_size_stats(ctx: RepoContext) -> dict:
     """Shared cached PR size distribution (columns AX-BA).
 
-    Gated on the SAME effective total_pr_count that column P reports (PR cache
-    when trusted, git-log fingerprint fallback otherwise): a repository with no
-    PRs gets the agreed zeros instead of a commit-size distribution.  Computed
+    Gated on the SAME effective merged-PR count that column BF reports (PR
+    cache when trusted, git-log fingerprint fallback otherwise): the size
+    units are measured from history, i.e. from MERGED PRs, so a repository
+    with no merged PRs gets the agreed zeros instead of a commit-size
+    distribution — even when the API knows of open/closed ones.  Computed
     once per repository; the four metric classes read their field from the
     cached dict.
     """
@@ -97,10 +146,10 @@ def _pr_size_stats(ctx: RepoContext) -> dict:
 
     def _compute() -> dict:
         try:
-            total_pr = int(TotalPRMetric().compute(ctx) or 0)
+            merged_pr = int(_merged_pr_count(ctx) or 0)
         except (TypeError, ValueError):
-            total_pr = 0
-        return collect_pr_size_stats(ctx.vcs, ctx.repo_path, total_pr)
+            merged_pr = 0
+        return collect_pr_size_stats(ctx.vcs, ctx.repo_path, merged_pr)
 
     return ctx._cached("pr_size_stats", _compute)
 
