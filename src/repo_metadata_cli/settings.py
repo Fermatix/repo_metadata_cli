@@ -100,9 +100,12 @@ class MetricsSettings:
         # Shell/Batch/Dockerfile/Makefile/Gradle/Terraform stay code.
         # JSONL added on top of the shared set (2026-07: a 102k-line JSONL data
         # dump scored primary_language=JSONL) — propagate to the mirrors.
+        # SQL added 2026-08-08: committed DB dumps scored primary_language=SQL
+        # and masked the real language — propagate to the mirrors.
         default_factory=lambda: [
             # Markup / style / data / docs
             "SVG", "CSS", "Sass", "LESS", "Stylus", "HTML", "JSON", "JSONL", "Markdown", "MDX",
+            "SQL",
             "Plain Text", "CSV", "YAML", "TOML", "INI", "XML", "XML Schema", "XAML",
             "License", "Properties File", "Docker ignore",
             # Logic-less templates
