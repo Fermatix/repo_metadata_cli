@@ -1,10 +1,17 @@
-"""Batch-fetch reviewed PR counts from GitHub / GitLab and write a JSON cache.
+"""Batch-fetch PR counts from GitHub / GitLab and write a JSON cache.
 
 Cache format (pr_cache.json):
     {
-        "<bundle_stem>": {"total_pr": 150, "reviewed_pr": 142, "url": "https://..."},
+        "<bundle_stem>": {"total_pr": 163, "merged_pr": 150, "reviewed_pr": 142,
+                          "url": "https://..."},
         ...
     }
+
+``total_pr`` counts ALL states (merged + open + closed), ``merged_pr`` only
+merged ones, ``reviewed_pr`` merged ones with review activity.  Entries
+written by older versions lack ``merged_pr`` (their ``total_pr`` was the
+merged count) — the pipeline treats those as merged-only and falls back to
+git fingerprints for the merged column.
 
 Bundle stem = filename without .bundle, matching ctx.bundle_name in the pipeline.
 For repos named identically across different orgs, rename bundles to avoid collisions.
@@ -189,13 +196,17 @@ def _http_get(url: str, headers: dict, params: Optional[dict] = None) -> dict | 
 def _build_github_batch_query(batch: list[Tuple[str, str, str]]) -> str:
     """Build a GraphQL query with one alias per (alias, owner, repo) tuple.
 
-    Returns total merged PRs and how many of the first _PR_PAGE_SIZE had reviews.
+    Returns the all-states PR total, the merged-PR total, and how many of the
+    first _PR_PAGE_SIZE merged PRs had reviews.
     """
     fragments = []
     for alias, owner, repo in batch:
         fragments.append(f"""
   {alias}: repository(owner: {json.dumps(owner)}, name: {json.dumps(repo)}) {{
-    totalPRs: pullRequests(states: MERGED, first: 1) {{
+    allPRs: pullRequests(first: 1) {{
+      totalCount
+    }}
+    mergedPRs: pullRequests(states: MERGED, first: 1) {{
       totalCount
     }}
     firstPage: pullRequests(states: MERGED, first: {_PR_PAGE_SIZE}, orderBy: {{field: CREATED_AT, direction: DESC}}) {{
@@ -291,7 +302,12 @@ def fetch_github_batch(
                 logger.warning("No data for %s/%s", owner, name)
                 continue
 
-            total_pr = repo_data.get("totalPRs", {}).get("totalCount", 0)
+            merged_pr = repo_data.get("mergedPRs", {}).get("totalCount", 0)
+            # All-states total; a repo where the alias is missing (partial
+            # GraphQL errors) degrades to the merged count — never below it.
+            total_pr = max(
+                repo_data.get("allPRs", {}).get("totalCount", 0), merged_pr
+            )
             first_page = repo_data.get("firstPage", {})
             nodes = first_page.get("nodes", [])
             reviewed = _count_reviewed_in_nodes(nodes)
@@ -308,6 +324,7 @@ def fetch_github_batch(
 
             results[stem] = {
                 "total_pr": total_pr,
+                "merged_pr": merged_pr,
                 "reviewed_pr": reviewed,
                 "url": f"https://github.com/{owner}/{name}",
             }
@@ -319,8 +336,11 @@ def fetch_github_batch(
 # GitLab REST API
 # ---------------------------------------------------------------------------
 
-def _gitlab_total_count(base_url: str, encoded: str, headers: dict) -> Optional[int]:
-    """Exact merged-MR count from GitLab's ``X-Total`` header (one cheap request).
+def _gitlab_total_count(
+    base_url: str, encoded: str, headers: dict, state: str = "merged"
+) -> Optional[int]:
+    """Exact MR count for one ``state`` from GitLab's ``X-Total`` header
+    (one cheap request).  ``state="all"`` counts every MR regardless of state.
 
     Returns None when the header is absent (GitLab omits it for very large or
     keyset-paginated collections) so the caller can fall back to pagination.
@@ -331,13 +351,14 @@ def _gitlab_total_count(base_url: str, encoded: str, headers: dict) -> Optional[
         resp = requests.get(
             f"{base_url}/projects/{encoded}/merge_requests",
             headers=headers,
-            params={"state": "merged", "per_page": 1, "page": 1,
+            params={"state": state, "per_page": 1, "page": 1,
                     "with_merge_status_recheck": "false"},
             timeout=30,
         )
         resp.raise_for_status()
     except Exception as exc:  # noqa: BLE001 — best-effort; pagination is the fallback
-        logger.debug("GitLab X-Total lookup failed for %s: %s", encoded, exc)
+        logger.debug("GitLab X-Total lookup failed for %s (state=%s): %s",
+                     encoded, state, exc)
         return None
     total = resp.headers.get("X-Total")
     try:
@@ -352,12 +373,14 @@ def fetch_gitlab_repo(
     token: str,
     base_url: str = _GITLAB_REST_BASE,
 ) -> Optional[dict]:
-    """Fetch total and reviewed MR count for one GitLab project.
+    """Fetch the all-states total, merged and reviewed MR counts for one
+    GitLab project.
 
     project_path may contain '/' or '%2F' separators — both are handled.
-    total_pr comes from the exact ``X-Total`` header when available (so it is not
-    capped by pagination); reviewed_pr is accumulated by paging up to
-    _MAX_PR_PAGES, with a warning when the cap is reached.
+    total_pr (state=all) and merged_pr (state=merged) come from the exact
+    ``X-Total`` headers when available (so they are not capped by pagination);
+    reviewed_pr is accumulated by paging the merged list up to _MAX_PR_PAGES,
+    with a warning when the cap is reached.
     """
     headers = {"PRIVATE-TOKEN": token, "Content-Type": "application/json"}
     # Normalise: decode any existing %2F then re-encode so the path is uniform.
@@ -366,7 +389,8 @@ def fetch_gitlab_repo(
 
     logger.info("GitLab fetching MRs for %s (encoded: %s)", decoded_path, encoded)
 
-    exact_total = _gitlab_total_count(base_url, encoded, headers)
+    exact_merged = _gitlab_total_count(base_url, encoded, headers, state="merged")
+    exact_all = _gitlab_total_count(base_url, encoded, headers, state="all")
 
     paged_total = 0
     reviewed = 0
@@ -388,7 +412,7 @@ def fetch_gitlab_repo(
         except Exception as exc:
             logger.warning("GitLab MR list failed for %s page %d: %s",
                            decoded_path, page, exc)
-            if page == 1 and exact_total is None:
+            if page == 1 and exact_merged is None:
                 return None
             truncated = False
             break
@@ -418,12 +442,17 @@ def fetch_gitlab_repo(
             decoded_path, _MAX_PR_PAGES, paged_total,
         )
 
-    total_mr = exact_total if exact_total is not None else paged_total
-    logger.info("GitLab %s: total_mr=%d reviewed_pr=%d", decoded_path, total_mr, reviewed)
+    merged_mr = exact_merged if exact_merged is not None else paged_total
+    # Without the all-states header the true total is unknown — degrade to the
+    # merged count (never below it), same honest fallback as fingerprints.
+    total_mr = max(exact_all, merged_mr) if exact_all is not None else merged_mr
+    logger.info("GitLab %s: total_mr=%d merged_mr=%d reviewed_pr=%d",
+                decoded_path, total_mr, merged_mr, reviewed)
     parsed_base = urlparse(base_url)
     instance_url = f"{parsed_base.scheme}://{parsed_base.netloc}"
     return {
         "total_pr": total_mr,
+        "merged_pr": merged_mr,
         "reviewed_pr": reviewed,
         "url": f"{instance_url}/{decoded_path}",
     }
@@ -533,7 +562,9 @@ def enrich_pr_cache(
                 continue  # only skip non-zero cached entries; retry zeros
             result = fetch_gitlab_repo(stem, path, gitlab_token, gitlab_base_url)
             # Always cache, even on 404/failure — prevents infinite retries
-            cache[stem] = result or {"total_pr": 0, "reviewed_pr": 0, "url": path}
+            cache[stem] = result or {
+                "total_pr": 0, "merged_pr": 0, "reviewed_pr": 0, "url": path,
+            }
             _save_cache(cache_file, cache)
     elif gitlab_list and not gitlab_token:
         logger.warning("GitLab repos found but GITLAB_TOKEN not provided — skipping")

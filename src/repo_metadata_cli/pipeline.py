@@ -23,6 +23,7 @@ from .metrics import (  # metrics/ package — all metric classes via __init__.p
     AvgFuncLengthMetric,
     AvgLocPerPRMetric,
     BranchCountMetric,
+    ClassesCountMetric,
     CommentRatioMetric,
     DepDirLocMetric,
     CIChecksMetric,
@@ -43,12 +44,14 @@ from .metrics import (  # metrics/ package — all metric classes via __init__.p
     FirstCommitHashMetric,
     ForkPctMetric,
     FullLangDistributionMetric,
+    FunctionsCountMetric,
     GitHistoryMbMetric,
     HoldoutMetric,
     IssueTrackerMetric,
     LangDistributionMetric,
     LicenseTypeMetric,
     LogicalLocMetric,
+    MergedPRMetric,
     MetadataBranchNameMetric,
     MetadataCommitHashMetric,
     MonitoringMetric,
@@ -69,6 +72,7 @@ from .metrics import (  # metrics/ package — all metric classes via __init__.p
     TestCoveragePctMetric,
     TestSuiteMetric,
     TotalPRMetric,
+    UntestedFilesPctMetric,
     VendorNameMetric,
     WorktreeMbMetric,
 )
@@ -147,14 +151,18 @@ _EMPTY_COLUMNS: Dict[str, str] = {
 
 # Trailing metrics — the stable schema TAIL.  Appended after the pricing
 # placeholders so a freshly written CSV and a migrated legacy CSV (which gets
-# these columns appended after its last column) end with the same five columns.
+# these columns appended after its last column) end with the same tail columns.
 # Field names must stay in sync with csv_migration.NEW_COLUMNS.
 TRAILING_METRICS: list[Type[BaseMetric]] = [
-    PRSimplePctMetric,      # AX
-    PRStandardPctMetric,    # AY
-    PRRichPctMetric,        # AZ
-    AvgLocPerPRMetric,      # BA
-    TestCoveragePctMetric,  # BB
+    PRSimplePctMetric,       # AX
+    PRStandardPctMetric,     # AY
+    PRRichPctMetric,         # AZ
+    AvgLocPerPRMetric,       # BA
+    TestCoveragePctMetric,   # BB
+    FunctionsCountMetric,    # BC
+    ClassesCountMetric,      # BD
+    UntestedFilesPctMetric,  # BE
+    MergedPRMetric,          # BF
 ]
 
 
@@ -334,11 +342,21 @@ def _backfill_repo_row(
 
     A metric that raises leaves its cell empty (retried next run); other
     metrics and repositories continue unaffected.
+
+    The PR columns P/Q are refreshed TOGETHER with merged_pr_count (BF): a
+    legacy row's total_pr_count may predate the current pr_cache (or even the
+    enricher itself), and writing a fresh merged count next to a stale total
+    would make the row internally contradictory (merged > total, flagged by
+    validate_csv).  All three come from the same cache-or-fingerprints source,
+    so refreshing them as a unit keeps the invariant.
     """
+    # Recomputed alongside TRAILING_METRICS so the PR triple stays consistent.
+    _PR_CONSISTENCY_METRICS = [TotalPRMetric, ReviewedPRMetric]
+
     values: Dict[str, Any] = {}
     if local_mode:
         ctx = build_local_repo_context(item, settings, allowed_files, ts_manager)
-        _compute_metric_values(ctx, TRAILING_METRICS, values)
+        _compute_metric_values(ctx, TRAILING_METRICS + _PR_CONSISTENCY_METRICS, values)
     else:
         with tempfile.TemporaryDirectory() as tmpdir:
             ctx = build_repo_context(item, settings, allowed_files, ts_manager, Path(tmpdir))
@@ -347,7 +365,7 @@ def _backfill_repo_row(
                     "Backfill of %s skipped: failed to materialize repository", stem
                 )
                 return
-            _compute_metric_values(ctx, TRAILING_METRICS, values)
+            _compute_metric_values(ctx, TRAILING_METRICS + _PR_CONSISTENCY_METRICS, values)
     if not update_row_fields(csv_path, org, leaf, stem, values):
         logger.warning(
             "Backfill: no CSV row matched %s (org=%r, name=%r); nothing updated.",

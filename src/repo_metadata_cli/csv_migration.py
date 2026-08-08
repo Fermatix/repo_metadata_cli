@@ -37,6 +37,10 @@ NEW_COLUMNS: tuple = (
     "pr_rich_pct",
     "avg_loc_per_pr",
     "test_coverage_pct",
+    "functions_count",
+    "classes_count",
+    "untested_files_pct",
+    "merged_pr_count",
 )
 
 

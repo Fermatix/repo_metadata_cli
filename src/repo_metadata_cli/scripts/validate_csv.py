@@ -270,6 +270,25 @@ def _check_invariants(df: pd.DataFrame) -> Tuple[List[CheckResult], List[CheckRe
     for _, row in bad.iterrows():
         r.add(row["repo_name"], f"reviewed_pr={row['reviewed_pr_count']}, total_pr={row['total_pr_count']}")
 
+    # BF <= P: merged PRs cannot exceed the all-states total (column may be
+    # absent in CSVs written before the schema migration ran).  Caveat: on a
+    # MIGRATED legacy CSV the backfill refreshes only the trailing columns, so
+    # a stale fingerprint-era total_pr_count next to a fresh API merged count
+    # can legitimately trip this — rerun the repo or treat as a staleness flag.
+    if "merged_pr_count" in df.columns:
+        r = err("merged_le_total", "merged_pr_count (BF) <= total_pr_count (P)")
+        merged = pd.to_numeric(df["merged_pr_count"], errors="coerce")
+        total = pd.to_numeric(df["total_pr_count"], errors="coerce")
+        bad = df[merged > total]
+        for _, row in bad.iterrows():
+            r.add(row["repo_name"], f"merged_pr={row['merged_pr_count']}, total_pr={row['total_pr_count']}")
+
+        r = err("reviewed_le_merged", "reviewed_pr_count (Q) <= merged_pr_count (BF)")
+        reviewed = pd.to_numeric(df["reviewed_pr_count"], errors="coerce")
+        bad = df[reviewed > merged]
+        for _, row in bad.iterrows():
+            r.add(row["repo_name"], f"reviewed_pr={row['reviewed_pr_count']}, merged_pr={row['merged_pr_count']}")
+
     # AE <= F: dependency_dir_loc cannot exceed raw_loc
     if "dependency_dir_loc" in df.columns:
         r = err("dep_dir_le_raw", "dependency_dir_loc (AE) <= raw_loc (F)")

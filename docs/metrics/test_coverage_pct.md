@@ -1,17 +1,20 @@
-# Metric `test_coverage_pct` (column BB)
+# Metrics `test_coverage_pct` (column BB), `untested_files_pct` (BE)
 
-**A STATIC estimate of the test-code share — a test-to-code LOC ratio.  This
-is NOT runtime coverage: no tests are executed.**  The value is the percentage
-of test-file lines among all code lines of the tracked, non-vendored tree,
-capped at 100.
+**STATIC estimates of the test-code share.  This is NOT runtime coverage: no
+tests are executed.**  Both are computed in ONE pass over the same file set
+and the same test-file detection:
 
 ```
-test_coverage_pct = min(100, round(100 * test_code_lines / total_code_lines))
-                    (0 when total_code_lines == 0)
+test_coverage_pct  = min(100, round(100 * test_code_lines / total_code_lines))
+                     (0 when total_code_lines == 0)
+untested_files_pct = round(100 * (total_code_files - test_code_files) / total_code_files)
+                     (0 when there are no code files; 100 = no tests at all)
 ```
 
-Lines are counted as newline bytes, without language parsing.  Deterministic —
-no LLM, no network calls.
+The client-facing "% Test-to-Code Ratio" column is served by the SAME
+`test_coverage_pct` value (percent, capped at 100).  Lines are counted as
+newline bytes, without language parsing.  Deterministic — no LLM, no network
+calls.
 
 ## File selection
 

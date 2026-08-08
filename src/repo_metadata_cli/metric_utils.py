@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 class FunctionLengthStats:
     total_func_lines: int = 0
     function_count: int = 0
+    class_count: int = 0
 
     @property
     def average(self) -> float:
@@ -35,17 +36,50 @@ class FunctionLengthStats:
     def merge(self, other: "FunctionLengthStats") -> None:
         self.total_func_lines += other.total_func_lines
         self.function_count += other.function_count
+        self.class_count += other.class_count
 
 
 # ---------------------------------------------------------------------------
 # File iteration (used by tree-sitter metrics)
 # ---------------------------------------------------------------------------
 
-def iter_code_files(repo_dir: Path, allowed_files: AllowedFiles) -> Iterable[Path]:
+# VCS metadata is never hand-written code; excluded from AST walks even when
+# the caller passes no exclude_dirs.
+_ITER_VCS_DIRS = frozenset({".git", ".hg", ".svn"})
+
+
+def iter_code_files(
+    repo_dir: Path,
+    allowed_files: AllowedFiles,
+    exclude_dirs: Optional[List[str]] = None,
+) -> Iterable[Path]:
+    """Yield parseable code files, skipping directories named in
+    ``exclude_dirs`` (exact path-segment match, any depth) — pass
+    ``settings.metrics.scc_exclude_dirs`` to keep tree-sitter metrics on the
+    same vendor-free file set as logical_loc.
+
+    Generated files (``*.min.js``, ``*.d.ts``, ``*_pb2.py``, ``*.g.dart`` …)
+    and files over 2 MB are skipped via the same rules as the test-coverage
+    estimates — one minified bundle or a codegen twin per model would
+    otherwise dominate functions_count/classes_count while BB/BE/BF exclude
+    it."""
+    # late import: coverage_estimate is a leaf module (no metric_utils import)
+    from .coverage_estimate import GENERATED_FILE_RE, MAX_FILE_BYTES
+
+    excluded = _ITER_VCS_DIRS | set(exclude_dirs or ())
     for path in repo_dir.rglob("*"):
         if not path.is_file():
             continue
+        if any(part in excluded for part in path.relative_to(repo_dir).parts[:-1]):
+            continue
         if not allowed_files.is_code_path(path):
+            continue
+        if GENERATED_FILE_RE.search(path.name):
+            continue
+        try:
+            if path.stat().st_size > MAX_FILE_BYTES:
+                continue
+        except OSError:
             continue
         if not is_utf8_file(path):
             continue
@@ -1066,6 +1100,7 @@ def compute_docstring_ratio(
     repo_dir: Path,
     allowed_files: AllowedFiles,
     ts_manager: Optional[TreeSitterManager],
+    exclude_dirs: Optional[List[str]] = None,
 ) -> float:
     """Fraction of functions/methods with a leading docstring or doc comment."""
     if ts_manager is None:
@@ -1074,7 +1109,7 @@ def compute_docstring_ratio(
     total_funcs = 0
     funcs_with_docs = 0
 
-    for path in iter_code_files(repo_dir, allowed_files):
+    for path in iter_code_files(repo_dir, allowed_files, exclude_dirs):
         parser_entry = ts_manager.parser_for_suffix(path.suffix)
         if parser_entry is None:
             continue
@@ -1111,28 +1146,57 @@ def compute_docstring_ratio(
 # Function length via tree-sitter (column AA)
 # ---------------------------------------------------------------------------
 
+def _is_class_definition_node(node: Any) -> bool:
+    """Weed out grammar quirks where the class node type alone over-matches.
+
+    * C-family ``class_specifier``/``struct_specifier`` (cpp, glsl, hlsl) are
+      also emitted for forward declarations (``class Fwd;``) and elaborated
+      type references (``struct Point p;``) — only a body makes a definition.
+    * Go ``type_spec`` covers EVERY named type (``type MyID int``); only
+      struct/interface types are class analogs.
+    * Swift ``extension Foo`` shares ``class_declaration`` with
+      class/struct/enum/actor but declares no new type.  Other grammars never
+      put an ``extension`` keyword child in class_declaration, so the check
+      is a no-op for them.
+    """
+    t = node.type
+    if t in ("class_specifier", "struct_specifier"):
+        return any(c.type == "field_declaration_list" for c in node.children)
+    if t == "type_spec":
+        return any(c.type in ("struct_type", "interface_type") for c in node.children)
+    if t == "class_declaration":
+        return all(c.type != "extension" for c in node.children)
+    return True
+
+
 def compute_avg_func_length(
     repo_dir: Path,
     allowed_files: AllowedFiles,
     ts_manager: Optional[TreeSitterManager],
+    exclude_dirs: Optional[List[str]] = None,
 ) -> float:
-    return compute_avg_func_length_stats(repo_dir, allowed_files, ts_manager).average
+    return compute_avg_func_length_stats(
+        repo_dir, allowed_files, ts_manager, exclude_dirs
+    ).average
 
 
 def compute_avg_func_length_stats(
     repo_dir: Path,
     allowed_files: AllowedFiles,
     ts_manager: Optional[TreeSitterManager],
+    exclude_dirs: Optional[List[str]] = None,
 ) -> FunctionLengthStats:
+    """One AST pass per file: function lengths/count (AA, BC) and class
+    count (BD) are tallied together."""
     stats = FunctionLengthStats()
     if ts_manager is None:
         return stats
 
-    for path in iter_code_files(repo_dir, allowed_files):
-        parser_entry = ts_manager.parser_for_suffix(path.suffix)
+    for path in iter_code_files(repo_dir, allowed_files, exclude_dirs):
+        parser_entry = ts_manager.node_types_for_suffix(path.suffix)
         if parser_entry is None:
             continue
-        parser, func_node_types = parser_entry
+        parser, func_node_types, class_node_types = parser_entry
 
         try:
             text = path.read_text(encoding="utf-8", errors="ignore")
@@ -1155,6 +1219,15 @@ def compute_avg_func_length_stats(
                 if length > 0:
                     stats.total_func_lines += length
                     stats.function_count += 1
+            # is_named: in some grammars (ruby, js/ts) the class KEYWORD token
+            # shares the type string with the declaration node — anonymous
+            # tokens must not count.
+            if (
+                node.type in class_node_types
+                and node.is_named
+                and _is_class_definition_node(node)
+            ):
+                stats.class_count += 1
             stack.extend(node.children)
 
     return stats

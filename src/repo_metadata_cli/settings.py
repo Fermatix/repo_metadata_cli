@@ -29,6 +29,8 @@ class TreeSitterSettings:
     language_packages: List[str] = field(default_factory=list)
     extension_language_map: Dict[str, str] = field(default_factory=dict)
     lang_func_node_types: Dict[str, Set[str]] = field(default_factory=dict)
+    # Optional: class-like declaration node types per language (classes_count).
+    lang_class_node_types: Dict[str, Set[str]] = field(default_factory=dict)
 
 
 @dataclass
@@ -246,6 +248,12 @@ def load_app_settings(config_file: Optional[Path]) -> AppSettings:
         raise ValueError(
             f"lang_func_node_types must be specified in [tree_sitter] section of TOML ({cfg_path})."
         )
+
+    # Optional, unlike the two mappings above: an old TOML without this table
+    # must keep working (classes_count is then 0 everywhere).
+    class_nodes = _parse_str_set_dict(ts_data.get("lang_class_node_types"))
+    if class_nodes:
+        tree_sitter_settings.lang_class_node_types = class_nodes
 
     metrics_data = data.get("metrics", {}) if isinstance(data, dict) else {}
     metrics_settings = MetricsSettings()

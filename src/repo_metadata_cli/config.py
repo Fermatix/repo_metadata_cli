@@ -30,3 +30,6 @@ class TreeSitterConfig:
     language_packages: list[str] = field(default_factory=list)
     extension_language_map: Mapping[str, str] = field(default_factory=dict)
     lang_func_node_types: MutableMapping[str, Set[str]] = field(default_factory=dict)
+    # Optional (empty = classes_count is 0 for the language); unlike the two
+    # mappings above, absence from the TOML is not an error.
+    lang_class_node_types: MutableMapping[str, Set[str]] = field(default_factory=dict)

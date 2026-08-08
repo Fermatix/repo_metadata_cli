@@ -187,7 +187,7 @@ def test_fallback_merge_commits(tmp_path):
     _commit_file(repo, "a.py", 5, "init")
     _merge_branch(repo, "f1", {"b.py": 40}, "Merge branch 'f1'")
     _merge_branch(repo, "f2", {"c.py": 320}, "Merge branch 'f2'")
-    stats = collect_pr_size_stats(GitVCS(), repo, total_pr_count=2)
+    stats = collect_pr_size_stats(GitVCS(), repo, merged_pr_count=2)
     # two merge units: 40 (simple) and 320 (rich); plain commits not counted
     assert stats == {
         "pr_simple_pct": 50, "pr_standard_pct": 0, "pr_rich_pct": 50,
@@ -200,7 +200,7 @@ def test_fallback_plain_commits(tmp_path):
     _init_git(repo)
     _commit_file(repo, "a.py", 10, "init")
     _commit_file(repo, "b.py", 200, "second")
-    stats = collect_pr_size_stats(GitVCS(), repo, total_pr_count=1)
+    stats = collect_pr_size_stats(GitVCS(), repo, merged_pr_count=1)
     assert stats == {
         "pr_simple_pct": 50, "pr_standard_pct": 50, "pr_rich_pct": 0,
         "avg_loc_per_pr": 105,
@@ -217,7 +217,7 @@ def test_size_bucket_boundaries_50_51_300_301(tmp_path):
     _commit_file(repo, "b.py", 51, "c51")        # 51  -> standard (boundary)
     _commit_file(repo, "c.py", 300, "c300")      # 300 -> standard (boundary)
     _commit_file(repo, "d.py", 301, "c301")      # 301 -> rich (boundary)
-    stats = collect_pr_size_stats(GitVCS(), repo, total_pr_count=1)
+    stats = collect_pr_size_stats(GitVCS(), repo, merged_pr_count=1)
     assert stats == {
         "pr_simple_pct": 40, "pr_standard_pct": 40, "pr_rich_pct": 20,
         "avg_loc_per_pr": 142,  # round(709 / 5)
@@ -231,7 +231,7 @@ def test_max_units_cap(tmp_path, monkeypatch):
     for i in range(3):
         _commit_file(repo, f"f{i}.py", 10, f"small {i}")
     monkeypatch.setattr(pr_size_stats, "MAX_PR_UNITS", 3)
-    stats = collect_pr_size_stats(GitVCS(), repo, total_pr_count=1)
+    stats = collect_pr_size_stats(GitVCS(), repo, merged_pr_count=1)
     # newest-first: the cap keeps the three 10-line commits, dropping the root
     assert stats["pr_simple_pct"] == 100
     assert stats["pr_rich_pct"] == 0
@@ -245,7 +245,7 @@ def test_percentage_and_average_rounding(tmp_path):
     _commit_file(repo, "root.py", 10, "init")
     _commit_file(repo, "a.py", 100, "mid")
     _commit_file(repo, "b.py", 500, "big")
-    stats = collect_pr_size_stats(GitVCS(), repo, total_pr_count=1)
+    stats = collect_pr_size_stats(GitVCS(), repo, merged_pr_count=1)
     # 1/3 each: round(33.33) == 33 everywhere; avg round(610/3) == round(203.33)
     assert stats == {
         "pr_simple_pct": 33, "pr_standard_pct": 33, "pr_rich_pct": 33,
@@ -258,32 +258,32 @@ def test_average_uses_bankers_rounding_like_reference(tmp_path):
     _init_git(repo)
     _commit_file(repo, "root.py", 1, "init")
     _commit_file(repo, "a.py", 4, "second")
-    stats = collect_pr_size_stats(GitVCS(), repo, total_pr_count=1)
+    stats = collect_pr_size_stats(GitVCS(), repo, merged_pr_count=1)
     # avg = 5/2 = 2.5 -> Python round() gives 2 (same as the reference)
     assert stats["avg_loc_per_pr"] == 2
 
 
 # --- zero semantics --------------------------------------------------------
 
-def test_total_pr_count_zero_gates_to_zeros(tmp_path):
+def test_merged_pr_count_zero_gates_to_zeros(tmp_path):
     repo = tmp_path / "r"
     _init_git(repo)
     _commit_file(repo, "a.py", 10, "init")
     _commit_file(repo, "b.py", 200, "second")
-    assert collect_pr_size_stats(GitVCS(), repo, total_pr_count=0) == zero_pr_size_stats()
+    assert collect_pr_size_stats(GitVCS(), repo, merged_pr_count=0) == zero_pr_size_stats()
 
 
 def test_single_commit_yields_zeros(tmp_path):
     repo = tmp_path / "r"
     _init_git(repo)
     _commit_file(repo, "a.py", 10, "only")
-    assert collect_pr_size_stats(GitVCS(), repo, total_pr_count=1) == zero_pr_size_stats()
+    assert collect_pr_size_stats(GitVCS(), repo, merged_pr_count=1) == zero_pr_size_stats()
 
 
 def test_empty_history_yields_zeros(tmp_path):
     repo = tmp_path / "r"
     _init_git(repo)
-    assert collect_pr_size_stats(GitVCS(), repo, total_pr_count=1) == zero_pr_size_stats()
+    assert collect_pr_size_stats(GitVCS(), repo, merged_pr_count=1) == zero_pr_size_stats()
 
 
 def test_plain_directory_yields_zeros(tmp_path):
@@ -316,12 +316,53 @@ def test_metric_classes_respect_pr_cache_gate(tmp_path):
     _commit_file(repo, "a.py", 10, "init")
     _commit_file(repo, "b.py", 200, "plain commit")
     # No fingerprints in history (git-log total would be 0), but the PR cache
-    # says the project has PRs -> same effective total as column P -> fallback
-    # commit basis is used.
+    # says the project has merged PRs (old-format entry: total_pr == merged)
+    # -> same effective merged count as column BF -> fallback commit basis.
     ctx = _ctx(repo, pr_cache={repo.name: {"total_pr": 4, "reviewed_pr": 1}})
     assert PRSimplePctMetric().compute(ctx) == 50
     assert PRStandardPctMetric().compute(ctx) == 50
     assert AvgLocPerPRMetric().compute(ctx) == 105
+
+
+def test_gate_closed_when_api_knows_only_unmerged_prs(tmp_path):
+    repo = tmp_path / "r"
+    _init_git(repo)
+    _commit_file(repo, "a.py", 10, "init")
+    _commit_file(repo, "b.py", 200, "plain commit")
+    # New-format cache: the project has PRs, but none merged — size units come
+    # from merged history, so the distribution must stay zeros.
+    ctx = _ctx(repo, pr_cache={repo.name: {"total_pr": 3, "merged_pr": 0, "reviewed_pr": 0}})
+    assert PRSimplePctMetric().compute(ctx) == 0
+    assert PRStandardPctMetric().compute(ctx) == 0
+    assert AvgLocPerPRMetric().compute(ctx) == 0
+
+
+def test_total_and_merged_pr_metrics_split(tmp_path):
+    from repo_metadata_cli.metrics.git import MergedPRMetric, TotalPRMetric
+    repo = tmp_path / "r"
+    _init_git(repo)
+    _commit_file(repo, "a.py", 5, "init")
+    _commit_file(repo, "b.py", 30, "Add feature (#2)")
+
+    # new-format cache: total(all states) and merged differ
+    ctx = _ctx(repo, pr_cache={repo.name: {"total_pr": 10, "merged_pr": 7, "reviewed_pr": 3}})
+    assert TotalPRMetric().compute(ctx) == 10
+    assert MergedPRMetric().compute(ctx) == 7
+
+    # old-format cache: total_pr was the merged count -> both columns equal it
+    ctx = _ctx(repo, pr_cache={repo.name: {"total_pr": 9, "reviewed_pr": 3}})
+    assert TotalPRMetric().compute(ctx) == 9
+    assert MergedPRMetric().compute(ctx) == 9
+
+    # no cache: both fall back to the same fingerprint count (squash #2)
+    ctx = _ctx(repo)
+    assert TotalPRMetric().compute(ctx) == 1
+    assert MergedPRMetric().compute(ctx) == 1
+
+    # zero cache is distrusted -> fingerprints, not a silent 0
+    ctx = _ctx(repo, pr_cache={repo.name: {"total_pr": 0, "merged_pr": 0, "reviewed_pr": 0}})
+    assert TotalPRMetric().compute(ctx) == 1
+    assert MergedPRMetric().compute(ctx) == 1
 
 
 def test_pr_size_stats_cached_once(tmp_path):
@@ -367,7 +408,7 @@ def _build_reference_github_mix(repo: Path) -> None:
 def test_golden_parity_github_mix(tmp_path):
     repo = tmp_path / "github_mix"
     _build_reference_github_mix(repo)
-    stats = collect_pr_size_stats(GitVCS(), repo, total_pr_count=3)
+    stats = collect_pr_size_stats(GitVCS(), repo, merged_pr_count=3)
     # Reference: pr_count=3 (merge #1 = 90, squash #2 = 5, MR !7 = 400)
     assert stats == {
         "pr_simple_pct": 33, "pr_standard_pct": 33, "pr_rich_pct": 33,
@@ -381,7 +422,7 @@ def test_golden_parity_fallback_merges(tmp_path):
     _commit_file(repo, "a.py", 10, "init")
     for i, size in enumerate((40, 250, 320)):
         _merge_branch(repo, f"br{i}", {f"f{i}.py": size}, f"Merge branch 'br{i}'")
-    stats = collect_pr_size_stats(GitVCS(), repo, total_pr_count=3)
+    stats = collect_pr_size_stats(GitVCS(), repo, merged_pr_count=3)
     # Reference: basis=merge, sizes 40/250/320
     assert stats == {
         "pr_simple_pct": 33, "pr_standard_pct": 33, "pr_rich_pct": 33,
@@ -395,7 +436,7 @@ def test_golden_parity_fallback_commits(tmp_path):
     _commit_file(repo, "base.py", 7, "init")
     for name, size in (("s50.py", 50), ("s51.py", 51), ("s300.py", 300), ("s301.py", 301)):
         _commit_file(repo, name, size, f"c{size}")
-    stats = collect_pr_size_stats(GitVCS(), repo, total_pr_count=1)
+    stats = collect_pr_size_stats(GitVCS(), repo, merged_pr_count=1)
     # Reference: basis=commit, sizes 7/50/51/300/301
     assert stats == {
         "pr_simple_pct": 40, "pr_standard_pct": 40, "pr_rich_pct": 20,
@@ -436,7 +477,7 @@ def test_hg_fingerprint_units_and_sizes(tmp_path):
     vcs = MercurialVCS()
     units = vcs.pr_fingerprint_units(repo)
     assert [kind for _, kind in units] == ["merge", "commit"]
-    stats = collect_pr_size_stats(vcs, repo, total_pr_count=2)
+    stats = collect_pr_size_stats(vcs, repo, merged_pr_count=2)
     assert stats == {
         "pr_simple_pct": 50, "pr_standard_pct": 50, "pr_rich_pct": 0,
         "avg_loc_per_pr": 50,  # round((70 + 30) / 2)
@@ -458,7 +499,7 @@ def test_hg_fallback_merge_then_commits(tmp_path):
     vcs = MercurialVCS()
     assert vcs.pr_fingerprint_units(repo) == []
     assert len(vcs.merge_unit_revs(repo)) == 1
-    stats = collect_pr_size_stats(vcs, repo, total_pr_count=1)
+    stats = collect_pr_size_stats(vcs, repo, merged_pr_count=1)
     # single merge unit: +40 to first parent -> simple
     assert stats == {
         "pr_simple_pct": 100, "pr_standard_pct": 0, "pr_rich_pct": 0,
@@ -474,9 +515,9 @@ def test_hg_plain_commit_fallback_and_zero_semantics(tmp_path):
     _hg_commit_file(repo, "a.py", 10, "init")
     vcs = MercurialVCS()
     # single changeset -> zeros
-    assert collect_pr_size_stats(vcs, repo, total_pr_count=1) == zero_pr_size_stats()
+    assert collect_pr_size_stats(vcs, repo, merged_pr_count=1) == zero_pr_size_stats()
     _hg_commit_file(repo, "b.py", 400, "big")
-    stats = collect_pr_size_stats(vcs, repo, total_pr_count=1)
+    stats = collect_pr_size_stats(vcs, repo, merged_pr_count=1)
     assert stats == {
         "pr_simple_pct": 50, "pr_standard_pct": 0, "pr_rich_pct": 50,
         "avg_loc_per_pr": 205,  # round((10 + 400) / 2)
@@ -499,8 +540,8 @@ def test_git_and_hg_equivalent_history_agree(tmp_path):
     _hg_commit_file(hg_repo, "b.py", 30, "Add b (#2)")
     _hg_commit_file(hg_repo, "c.py", 301, "Add c (#3)")
 
-    git_stats = collect_pr_size_stats(GitVCS(), git_repo, total_pr_count=2)
-    hg_stats = collect_pr_size_stats(MercurialVCS(), hg_repo, total_pr_count=2)
+    git_stats = collect_pr_size_stats(GitVCS(), git_repo, merged_pr_count=2)
+    hg_stats = collect_pr_size_stats(MercurialVCS(), hg_repo, merged_pr_count=2)
     assert git_stats == hg_stats == {
         "pr_simple_pct": 50, "pr_standard_pct": 0, "pr_rich_pct": 50,
         "avg_loc_per_pr": 166,  # round((30 + 301) / 2)
