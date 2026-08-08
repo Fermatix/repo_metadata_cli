@@ -122,6 +122,25 @@ class RepoContext:
         )
 
     @property
+    def func_length_stats(self):
+        """Tree-sitter function/class tallies over the non-vendored tree, cached.
+
+        One AST pass serves avg_func_length (AA), functions_count (BC) and
+        classes_count (BD).  Vendor/build dirs are excluded via the same
+        ``scc_exclude_dirs`` list as logical_loc.
+        """
+        from .metric_utils import compute_avg_func_length_stats  # late import
+        return self._cached(
+            "func_length_stats",
+            lambda: compute_avg_func_length_stats(
+                self.repo_path,
+                self.allowed_files,
+                self.tree_sitter,
+                exclude_dirs=list(self.settings.metrics.scc_exclude_dirs),
+            ),
+        )
+
+    @property
     def tracked_files(self) -> list[str]:
         """FULL tracked-file list (repo-relative, '/'-separated), cached.
 

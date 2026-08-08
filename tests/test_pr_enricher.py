@@ -15,13 +15,40 @@ from repo_metadata_cli import pr_enricher
 # ===========================================================================
 
 def test_gitlab_total_uses_x_total_header(monkeypatch):
-    # Exact total comes from the X-Total header, independent of pagination depth.
+    # Exact counts come from the X-Total headers, independent of pagination depth.
     monkeypatch.setattr(pr_enricher, "_gitlab_total_count", lambda *a, **k: 1200)
     monkeypatch.setattr(pr_enricher, "_http_get", lambda *a, **k: [])  # no pages to walk
 
     res = pr_enricher.fetch_gitlab_repo("stem", "grp/proj", "tok")
     assert res is not None
     assert res["total_pr"] == 1200
+    assert res["merged_pr"] == 1200
+
+
+def test_gitlab_all_states_total_differs_from_merged(monkeypatch):
+    # total_pr = state=all, merged_pr = state=merged — two different headers.
+    def fake_total(base, enc, headers, state="merged"):
+        return {"merged": 1200, "all": 1303}[state]
+
+    monkeypatch.setattr(pr_enricher, "_gitlab_total_count", fake_total)
+    monkeypatch.setattr(pr_enricher, "_http_get", lambda *a, **k: [])
+
+    res = pr_enricher.fetch_gitlab_repo("stem", "grp/proj", "tok")
+    assert res["total_pr"] == 1303
+    assert res["merged_pr"] == 1200
+
+
+def test_gitlab_missing_all_header_degrades_to_merged(monkeypatch):
+    # Without the state=all header the true total is unknown -> equals merged.
+    def fake_total(base, enc, headers, state="merged"):
+        return {"merged": 42, "all": None}[state]
+
+    monkeypatch.setattr(pr_enricher, "_gitlab_total_count", fake_total)
+    monkeypatch.setattr(pr_enricher, "_http_get", lambda *a, **k: [])
+
+    res = pr_enricher.fetch_gitlab_repo("stem", "grp/proj", "tok")
+    assert res["total_pr"] == 42
+    assert res["merged_pr"] == 42
 
 
 def test_gitlab_pagination_truncation_warns(monkeypatch, caplog):
@@ -35,6 +62,7 @@ def test_gitlab_pagination_truncation_warns(monkeypatch, caplog):
         res = pr_enricher.fetch_gitlab_repo("stem", "grp/proj", "tok")
 
     assert res["total_pr"] == pr_enricher._PR_PAGE_SIZE * pr_enricher._MAX_PR_PAGES
+    assert res["merged_pr"] == res["total_pr"]
     assert any("cap" in r.message.lower() for r in caplog.records)
 
 

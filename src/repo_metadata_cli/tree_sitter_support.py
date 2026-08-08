@@ -38,7 +38,26 @@ class TreeSitterManager:
 
     def parser_for_suffix(self, suffix: str) -> Optional[Tuple[Parser, set[str]]]:
         """
-        Returns a (Parser, func_node_types) tuple for a file suffix, or None if unavailable.
+        Returns a (Parser, func_node_types) tuple for a file suffix, or None if
+        unavailable or the language has no function node types configured.
+        """
+        entry = self.node_types_for_suffix(suffix)
+        if entry is None:
+            return None
+        parser, func_node_types, _ = entry
+        if not func_node_types:
+            logger.debug("No function node types configured for suffix %s", suffix)
+            return None
+        return parser, func_node_types
+
+    def node_types_for_suffix(
+        self, suffix: str
+    ) -> Optional[Tuple[Parser, set[str], set[str]]]:
+        """
+        Returns (Parser, func_node_types, class_node_types) for a file suffix,
+        or None when there is no grammar or NEITHER node-type set is
+        configured.  Either set may be empty — a language can have classes
+        configured but no functions (or vice versa).
         """
         self._ensure_languages()
 
@@ -50,9 +69,10 @@ class TreeSitterManager:
         if lang_name in self._failed_langs:
             return None
 
-        func_node_types = self.config.lang_func_node_types.get(lang_name)
-        if not func_node_types:
-            logger.debug("No function node types configured for language %s", lang_name)
+        func_node_types = self.config.lang_func_node_types.get(lang_name) or set()
+        class_node_types = self.config.lang_class_node_types.get(lang_name) or set()
+        if not func_node_types and not class_node_types:
+            logger.debug("No node types configured for language %s", lang_name)
             return None
 
         parser = self._parsers.get(lang_name)
@@ -65,4 +85,4 @@ class TreeSitterManager:
                 self._failed_langs.add(lang_name)
                 return None
 
-        return parser, func_node_types
+        return parser, set(func_node_types), set(class_node_types)

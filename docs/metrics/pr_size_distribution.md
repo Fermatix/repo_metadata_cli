@@ -48,18 +48,20 @@ avg_loc_per_pr  = round(total_changed_lines / units_total)
 `round` is Python's built-in (banker's rounding), matching the reference
 implementation this metric was ported from.
 
-## Gating on `total_pr_count`
+## Gating on `merged_pr_count`
 
-The distribution describes PRs, so it is gated on the pipeline's **effective**
-`total_pr_count` (column P: the PR-cache value when trusted, otherwise the
-git-log fingerprint count). When that count is 0 the four columns are 0 — a
-commit-size distribution is not passed off as PR statistics.
+The size units are measured from history, i.e. from MERGED PRs, so the
+distribution is gated on the pipeline's **effective** merged-PR count
+(column BF: the PR-cache ``merged_pr`` when trusted, otherwise the git-log
+fingerprint count). When that count is 0 the four columns are 0 — a
+commit-size distribution is not passed off as PR statistics, even when the
+API knows of open/closed PRs (``total_pr_count`` > 0).
 
 ## Zero semantics (agreed, not an error)
 
 All four columns are `0` when:
 
-- `total_pr_count == 0`, or
+- the effective `merged_pr_count` is 0, or
 - the history has fewer than two commits and no merges, or
 - no unit could be formed at all.
 

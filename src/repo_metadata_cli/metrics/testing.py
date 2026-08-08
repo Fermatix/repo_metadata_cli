@@ -1,4 +1,4 @@
-"""Columns U, BB — Test suite presence and static test-coverage estimate."""
+"""Columns U, BB, BE — test suite presence and static test-vs-code estimates."""
 
 from __future__ import annotations
 
@@ -7,6 +7,14 @@ from typing import Any
 from ..base_metric import BaseMetric, RepoContext
 from ..coverage_estimate import coverage_stats
 from ..metric_utils import detect_test_suite
+
+
+def _cached_coverage_stats(ctx: RepoContext) -> dict:
+    """One shared file walk for BB/BE (and the raw tallies)."""
+    return ctx._cached(
+        "coverage_stats",
+        lambda: coverage_stats(ctx.repo_path, ctx.tracked_files),
+    )
 
 
 class TestSuiteMetric(BaseMetric):
@@ -33,7 +41,20 @@ class TestCoveragePctMetric(BaseMetric):
     field_name = "test_coverage_pct"
 
     def compute(self, ctx: RepoContext) -> Any:
-        return ctx._cached(
-            "test_coverage_pct",
-            lambda: coverage_stats(ctx.repo_path, ctx.tracked_files)["test_coverage_pct"],
-        )
+        return _cached_coverage_stats(ctx)["test_coverage_pct"]
+
+
+class UntestedFilesPctMetric(BaseMetric):
+    """BE: Share of code files that are not test files, in percent (0-100).
+
+    A file-count heuristic over the same tracked non-vendored code files as
+    BB: files not recognized as tests by path convention, divided by all
+    code files.  100 means the repo has no test files at all; 0 when the repo
+    has no code files.
+    """
+
+    column = "BE"
+    field_name = "untested_files_pct"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return _cached_coverage_stats(ctx)["untested_files_pct"]

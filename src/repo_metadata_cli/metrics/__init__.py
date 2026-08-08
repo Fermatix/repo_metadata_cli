@@ -11,8 +11,10 @@ from .basic import (
 from .repo_description import DescriptionMetric
 from .docs import (
     AvgFuncLengthMetric,
+    ClassesCountMetric,
     DocstringRatioMetric,
     DocumentationCountMetric,
+    FunctionsCountMetric,
     HoldoutMetric,
     IssueTrackerMetric,
     LicenseTypeMetric,
@@ -35,6 +37,7 @@ from .git import (
     CreatedAtMetric,
     EarlyCommitHashesMetric,
     FirstCommitHashMetric,
+    MergedPRMetric,
     MetadataBranchNameMetric,
     MetadataCommitHashMetric,
     PRRichPctMetric,
@@ -54,7 +57,11 @@ from .loc import (
 )
 from .quality import DuplicationMetric, ForkPctMetric
 from .size import GitHistoryMbMetric, RepoBundleMbMetric, WorktreeMbMetric
-from .testing import TestCoveragePctMetric, TestSuiteMetric
+from .testing import (
+    TestCoveragePctMetric,
+    TestSuiteMetric,
+    UntestedFilesPctMetric,
+)
 
 __all__ = [
     "DatasetIdMetric",
@@ -114,4 +121,9 @@ __all__ = [
     "PRRichPctMetric",
     "AvgLocPerPRMetric",
     "TestCoveragePctMetric",
+    # AST tallies, untested-files share, merged-PR count (BC-BF) — schema tail
+    "FunctionsCountMetric",
+    "ClassesCountMetric",
+    "UntestedFilesPctMetric",
+    "MergedPRMetric",
 ]
