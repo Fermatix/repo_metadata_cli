@@ -14,6 +14,7 @@ from .allowed_files import AllowedFiles
 from .config import AllowedFilesConfig, TreeSitterConfig
 from .fetcher import fetch_bundles
 from .pipeline import run_metadata_pipeline
+from .scc_check import ensure_scc
 from .settings import load_app_settings, update_extensions_config
 from .tree_sitter_support import TreeSitterManager
 from .utils import configure_logging
@@ -99,6 +100,11 @@ def metadata(
         "--gitlab-base-url",
         help="GitLab API base URL (override for self-hosted instances, e.g. https://git.example.com/api/v4).",
     ),
+    install_scc_flag: bool = typer.Option(
+        False,
+        "--install-scc",
+        help="Download and install the official scc binary automatically when it is missing.",
+    ),
 ) -> None:
     """Fetch bundles, enrich PR counts, and compute metadata — all in one step.
 
@@ -128,6 +134,10 @@ def metadata(
             --output-csv repo_metadata.csv \\
             --gitlab-token $GITLAB_TOKEN
     """
+    # scc считает все LOC/языковые колонки; без него они молча уходят нулями —
+    # поэтому падаем сразу, до скачивания бандлов.
+    ensure_scc(auto_install=install_scc_flag)
+
     repos_file: Optional[Path] = None
 
     if dataset_path.is_file():
