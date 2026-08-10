@@ -83,9 +83,20 @@ def _parse_gitlab_project_path(
     """Return URL-encoded project path for a GitLab URL, or None.
 
     Checks all hosts in gitlab_hosts so self-hosted instances are supported.
+    Hosts are compared by hostname only, and for scheme URLs the path comes
+    from urlparse — the :PORT of ssh://host:PORT/... stays in netloc and never
+    leaks into the project path (it used to produce 404s like
+    projects/10022%2Fgroup%2Frepo on self-hosted instances).
     """
     url = url.strip().removesuffix(".git")
-    for host in gitlab_hosts:
+    hostnames = {h.rsplit("@", 1)[-1].split(":", 1)[0] for h in gitlab_hosts}
+    if "://" in url:
+        parsed = urlparse(url)
+        if parsed.hostname in hostnames:
+            path = parsed.path.strip("/")
+            return path.replace("/", "%2F") if path else None
+        return None
+    for host in hostnames:
         m = re.search(rf"{re.escape(host)}[:/](.+)$", url)
         if m:
             return m.group(1).replace("/", "%2F")

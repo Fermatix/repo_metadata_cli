@@ -37,6 +37,15 @@ def test_bundle_stem_is_full_path():
     assert bundle_stem_from_url("git@gitlab.com:group/repo.git") == "group-repo"
 
 
+def test_ssh_port_not_in_stem():
+    # ssh://host:PORT/... — the port belongs to netloc, not the namespace
+    # (a self-hosted instance behind a custom port produced stems like 10022-group-...).
+    url = "ssh://git@git.example.com:10022/group/sub/repo.git"
+    assert bundle_stem_from_url(url) == "group-sub-repo"
+    from repo_metadata_cli.partner import repo_leaf_from_url
+    assert repo_leaf_from_url(url) == "repo"
+
+
 def test_repo_leaf_from_url():
     from repo_metadata_cli.partner import repo_leaf_from_url
     assert repo_leaf_from_url(_PARTNER_URL) == "cool-repo"
