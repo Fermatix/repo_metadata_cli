@@ -18,6 +18,7 @@ import logging
 import re
 from pathlib import Path
 from typing import Dict, Optional
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,11 @@ def _url_path(url: str) -> str:
     s = url.strip().rstrip("/")
     if s.endswith(".git"):
         s = s[:-4]
-    s = re.sub(r"^[a-zA-Z]+://", "", s)   # strip scheme
+    if "://" in s:
+        # Scheme URL: urlparse keeps :PORT inside netloc, so the path stays
+        # clean — ssh://git@host:10022/group/repo must not leak "10022" into
+        # the namespace.
+        return urlparse(s).path.lstrip("/")
     s = s.replace(":", "/", 1)            # scp-like host:path → host/path
     s = re.sub(r"^[^@/]+@", "", s)        # strip leading user@
     return s.split("/", 1)[1] if "/" in s else s

@@ -11,6 +11,29 @@ from repo_metadata_cli import pr_enricher
 
 
 # ===========================================================================
+# URL → project path: ssh :PORT must not leak into the namespace
+# ===========================================================================
+
+def test_gitlab_project_path_ignores_ssh_port():
+    hosts = ("gitlab.com", "git.example.com")
+    assert pr_enricher._parse_gitlab_project_path(
+        "ssh://git@git.example.com:10022/group/sub/repo.git", hosts
+    ) == "group%2Fsub%2Frepo"
+
+
+def test_gitlab_project_path_scp_and_port_variants():
+    hosts = ("gitlab.com", "git.internal.example:8443")  # netloc of a base URL may carry a port
+    assert pr_enricher._parse_gitlab_project_path(
+        "git@git.internal.example:group/repo.git", hosts) == "group%2Frepo"
+    assert pr_enricher._parse_gitlab_project_path(
+        "https://git.internal.example:8443/group/sub/repo.git", hosts) == "group%2Fsub%2Frepo"
+    assert pr_enricher._parse_gitlab_project_path(
+        "https://gitlab.com/group/repo.git", hosts) == "group%2Frepo"
+    assert pr_enricher._parse_gitlab_project_path(
+        "https://github.com/org/repo.git", hosts) is None
+
+
+# ===========================================================================
 # Finding #2: PR counts no longer silently capped at 1000
 # ===========================================================================
 
