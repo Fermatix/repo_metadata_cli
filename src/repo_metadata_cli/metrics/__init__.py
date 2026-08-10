@@ -8,7 +8,6 @@ from .basic import (
     RepoUrlMetric,
     VendorNameMetric,
 )
-from .repo_description import DescriptionMetric
 from .docs import (
     AvgFuncLengthMetric,
     ClassesCountMetric,
@@ -69,7 +68,6 @@ __all__ = [
     "RepoOrgMetric",
     "RepoUrlMetric",
     "DatasetNameMetric",
-    "DescriptionMetric",
     "NumReposMetric",
     "RawLocMetric",
     "LogicalLocMetric",

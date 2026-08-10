@@ -36,7 +36,6 @@ from .metrics import (  # metrics/ package — all metric classes via __init__.p
     EarlyCommitHashesMetric,
     DatasetNameMetric,
     DeploymentMetric,
-    DescriptionMetric,
     DocstringRatioMetric,
     DocumentationCountMetric,
     DuplicationMetric,
@@ -90,7 +89,6 @@ METRICS: list[Type[BaseMetric]] = [
     VendorNameMetric,      # B
     RepoOrgMetric,         # B2 — full namespace path from source URL
     DatasetNameMetric,     # C
-    DescriptionMetric,     # D
     NumReposMetric,        # E
     RawLocMetric,          # F
     LogicalLocMetric,      # G
