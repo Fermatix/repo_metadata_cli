@@ -2,8 +2,6 @@
 
 Эта утилита предназначена для партнёров Fermatix, которые собирают метаданные репозиториев на своей стороне и передают только результирующий CSV-файл.
 
-> **Важно.** API-ключ OpenRouter, указанный в этой инструкции, предоставлен исключительно для работы данной утилиты. Использование ключа в личных целях или в других проектах недопустимо.
-
 ---
 
 ## Системные требования
@@ -125,7 +123,6 @@ uv pip install mercurial   # или: pip install mercurial
 
 **Команда запуска** (токены GitLab/GitHub не нужны):
 ```bash
-OPENROUTER_API_KEY=ВАШ_OPENROUTER_TOKEN \
 repo-metadata metadata /data/my_repos \
   --output-csv repo_metadata.csv
 ```
@@ -148,9 +145,6 @@ repo-metadata metadata /data/my_repos \
 2. Создайте токен с правом `repo` (read)
 3. Скопируйте значение токена
 
-**OpenRouter**
-1. Мы отправили его вам в сообщении
-
 ---
 
 ## Шаг 5. Запуск
@@ -158,7 +152,6 @@ repo-metadata metadata /data/my_repos \
 Выполните одну команду — она загрузит репозитории, соберёт PR-статистику и сформирует CSV:
 
 ```bash
-OPENROUTER_API_KEY=ВАШ_OPENROUTER_TOKEN \
 repo-metadata metadata repos.txt \
   --gitlab-token ВАШ_GITLAB_TOKEN \
   --pr-cache pr_cache.json \
@@ -166,14 +159,12 @@ repo-metadata metadata repos.txt \
 ```
 
 Замените:
-- `ВАШ_OPENROUTER_TOKEN` — токен из шага 4
 - `ВАШ_GITLAB_TOKEN` — токен из шага 4 (для GitHub используйте `--github-token`)
 - Если репозитории публичные, токен можно не указывать
 
 **Если ваши репозитории хранятся на корпоративном GitLab** (не на gitlab.com), добавьте параметр `--gitlab-base-url` с адресом API вашего инстанса:
 
 ```bash
-OPENROUTER_API_KEY=ВАШ_OPENROUTER_TOKEN \
 repo-metadata metadata repos.txt \
   --gitlab-token ВАШ_GITLAB_TOKEN \
   --gitlab-base-url https://git.your-company.ru/api/v4 \
@@ -191,7 +182,7 @@ repo-metadata metadata repos.txt \
 
 ## Метрики PR и оценка тестового кода
 
-Каждый запуск `repo-metadata metadata` добавляет в CSV пять колонок (отдельный флаг не нужен, LLM и сетевые вызовы в расчёте не участвуют):
+Каждый запуск `repo-metadata metadata` добавляет в CSV пять колонок (отдельный флаг не нужен, сетевые вызовы в расчёте не участвуют):
 
 | Колонка | Что это |
 |---|---|

@@ -35,3 +35,9 @@ htmlcov/
 *.json
 tmp/
 .to_send
+/out_meta/
+/stage/
+/*.log
+/run_*.sh
+/repos*.txt
+/pr_cache*.json
