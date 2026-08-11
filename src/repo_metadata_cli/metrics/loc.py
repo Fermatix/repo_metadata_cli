@@ -8,6 +8,7 @@ from ..base_metric import BaseMetric, RepoContext
 from ..metric_utils import (
     count_chars_in_files,
     get_auto_gen_loc,
+    get_clean_logical_loc,
     get_dependency_dir_loc,
     get_scc_file_stats,
 )
@@ -47,6 +48,29 @@ class AutoGenLocMetric(BaseMetric):
         return ctx._cached(
             "autogen_loc",
             lambda: get_auto_gen_loc(ctx.repo_path, autogen_dirs, exclude_dirs),
+        )
+
+
+class CleanLogicalLocMetric(BaseMetric):
+    """BG: scc Code lines of code languages only, with the extended exclusion
+    list (``metrics.clean_scc_exclude_dirs``).
+
+    The honest counterpart of logical_loc (G), which counts every language on
+    the smaller exclusion list — data formats, dumps and CMS cores included.
+    Hand-written markup (HTML/CSS/preprocessors/templates/XAML) counts as code;
+    XML counts only on Android res/ paths; SQL counts unless the file is a
+    database dump.  Like G, generated code stays inside — autogen_loc (H)
+    measures that share separately.  G is left untouched for comparability
+    with previously collected datasets."""
+
+    column = "BG"
+    field_name = "clean_logical_loc"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return get_clean_logical_loc(
+            ctx.repo_path,
+            exclude_dirs=list(ctx.settings.metrics.clean_scc_exclude_dirs),
+            non_code_languages=set(ctx.settings.metrics.clean_non_code_languages),
         )
 
 

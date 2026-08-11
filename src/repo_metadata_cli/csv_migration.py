@@ -41,6 +41,7 @@ NEW_COLUMNS: tuple = (
     "classes_count",
     "untested_files_pct",
     "merged_pr_count",
+    "clean_logical_loc",
 )
 
 
