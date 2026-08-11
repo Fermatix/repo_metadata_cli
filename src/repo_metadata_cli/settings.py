@@ -80,10 +80,56 @@ class MetricsSettings:
             "dist", "build", "target", ".gradle", ".dart_tool",
         ]
     )
+    # Extended exclusion list for clean_logical_loc (column BG).  Superset of
+    # scc_exclude_dirs covering third-party code that ships under
+    # non-standard directory names: CMS cores, committed framework/plugin
+    # copies, build outputs and tool caches.  scc --exclude-dir matches both a
+    # bare directory name (any depth) and a path suffix ("protected/extensions"),
+    # case-sensitively — "Plugins" (Unity SDK convention) does NOT match
+    # lowercase "plugins" (often first-party CMS/Vue plugins, which must stay).
+    # "external" is intentionally ABSENT here (unlike scc_exclude_dirs): that
+    # name is regularly used for first-party code and cuts real code when
+    # excluded.  logical_loc (G) keeps the old list unchanged.
+    clean_scc_exclude_dirs: List[str] = field(
+        default_factory=lambda: [
+            # JavaScript / TypeScript
+            "node_modules", "bower_components", "jspm_packages",
+            # Renamed vendor copies ("node_modules_1" and similar)
+            "node_modules_1",
+            # Go / PHP / Ruby
+            "vendor", "vendors", "Godeps",
+            # Python (virtualenvs + installed packages + self-vendoring + caches)
+            ".venv", "venv", "site-packages", "_vendor", "__pycache__", ".tox",
+            # iOS / Swift
+            "Pods", "Carthage", "SourcePackages", "DerivedData",
+            # Elixir / Erlang
+            "deps",
+            # C / C++
+            "third_party", "thirdparty", "vcpkg_installed",
+            # R / Elm / Haxe / Lua / Nim
+            "renv", "elm-stuff", "haxe_libraries", "lua_modules", "nimbledeps",
+            # Android legacy / Terraform / manual vendoring
+            "libs", ".terraform", "submodules",
+            # Build outputs / caches
+            "dist", "build", "target", ".gradle", ".dart_tool",
+            "obj", "bin", ".yarn",
+            # CMS cores and their data/upload trees (Bitrix, WordPress)
+            "bitrix", "upload", "wp-admin", "wp-includes",
+            # Committed framework / library copies
+            "libraries", "jquery", "bootstrap",
+            "protected/extensions", "protected/vendors",
+            # Unity Asset Store SDKs (capital P by convention)
+            "Plugins",
+            # Cordova generated platform scaffolding
+            "platforms",
+        ]
+    )
     autogen_dirs: List[str] = field(
         default_factory=lambda: [
             "generated", "migrations", "__generated__",
             ".next", ".nuxt", "out",
+            # Generator output convention (gSOAP, protoc, Android legacy gen/)
+            "gen",
             # Unity IL2CPP transpiler output (C# -> C++); lowercase, matched
             # case-insensitively.
             "il2cppoutput", "il2cppoutputproject",
@@ -121,6 +167,27 @@ class MetricsSettings:
             "Xcode Config", "Systemd", "Bitbucket Pipeline", "CloudFormation (YAML)",
             "Avro", "Protocol Buffers", "GraphQL", "Gherkin Specification",
             "Extensible Stylesheet Language Transformations",
+        ]
+    )
+    # Languages excluded from clean_logical_loc (column BG).  Narrower than
+    # non_code_languages: hand-written markup counts as code there — HTML, CSS
+    # and its preprocessors, logic-less templates, XAML, and hand-written IDL
+    # (GraphQL, Protocol Buffers, XSLT) all stay IN.  XML and SQL are absent
+    # from this list on purpose: they are decided per file (Android res/ XML
+    # counts as code; SQL counts unless the file is a database dump).
+    clean_non_code_languages: List[str] = field(
+        default_factory=lambda: [
+            "SVG", "JSON", "JSONL", "Markdown", "MDX",
+            "Plain Text", "CSV", "YAML", "TOML", "INI", "XML Schema",
+            "License", "Properties File", "Docker ignore",
+            # Notebook JSON (scc weighs the notebook JSON, not the code inside)
+            "Jupyter",
+            "ReStructuredText", "Rich Text Format", "Patch", "DOT",
+            "MSBuild", "Web Services Description Language",
+            "Report Definition Language", "Module-Definition",
+            "Windows Resource-Definition Script",
+            "Xcode Config", "Systemd", "Bitbucket Pipeline", "CloudFormation (YAML)",
+            "Avro", "Gherkin Specification",
         ]
     )
 
@@ -264,11 +331,19 @@ def load_app_settings(config_file: Optional[Path]) -> AppSettings:
         metrics_settings.dep_dirs = [str(x) for x in metrics_data["dep_dirs"] if str(x).strip()]
     if isinstance(metrics_data.get("scc_exclude_dirs"), list):
         metrics_settings.scc_exclude_dirs = [str(x) for x in metrics_data["scc_exclude_dirs"] if str(x).strip()]
+    if isinstance(metrics_data.get("clean_scc_exclude_dirs"), list):
+        metrics_settings.clean_scc_exclude_dirs = [
+            str(x) for x in metrics_data["clean_scc_exclude_dirs"] if str(x).strip()
+        ]
     if isinstance(metrics_data.get("autogen_dirs"), list):
         metrics_settings.autogen_dirs = [str(x) for x in metrics_data["autogen_dirs"] if str(x).strip()]
     if isinstance(metrics_data.get("non_code_languages"), list):
         metrics_settings.non_code_languages = [
             str(x) for x in metrics_data["non_code_languages"] if str(x).strip()
+        ]
+    if isinstance(metrics_data.get("clean_non_code_languages"), list):
+        metrics_settings.clean_non_code_languages = [
+            str(x) for x in metrics_data["clean_non_code_languages"] if str(x).strip()
         ]
 
     _validate_metrics_config(metrics_settings)

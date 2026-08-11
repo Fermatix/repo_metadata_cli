@@ -69,12 +69,14 @@ def _make_repo(dataset: Path, name: str) -> Path:
 # Expected trailing values for _make_repo: one squash PR unit of 30 lines
 # (fingerprint -> merged_pr_count=1), 20 test lines vs 130 total, 1 test file
 # out of 3; functions/classes are 0 because the pipeline runs with
-# ts_manager=None.
+# ts_manager=None; all 130 lines are Python code, so clean_logical_loc counts
+# them all.
 _EXPECTED = {
     "pr_simple_pct": 100, "pr_standard_pct": 0, "pr_rich_pct": 0,
     "avg_loc_per_pr": 30, "test_coverage_pct": 15,
     "functions_count": 0, "classes_count": 0,
     "untested_files_pct": 67, "merged_pr_count": 1,
+    "clean_logical_loc": 130,
 }
 
 assert set(_EXPECTED) == set(NEW_COLUMNS)

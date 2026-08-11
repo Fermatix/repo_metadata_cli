@@ -518,6 +518,8 @@ autogen_dirs = [
     "generated",
     "migrations",
     "__generated__",
+    # generator output convention (gSOAP, protoc, Android legacy gen/)
+    "gen",
     "out",
     ".next",
     ".nuxt",
@@ -561,4 +563,56 @@ non_code_languages = [
     "Xcode Config", "Systemd", "Bitbucket Pipeline", "CloudFormation (YAML)",
     "Avro", "Protocol Buffers", "GraphQL", "Gherkin Specification",
     "Extensible Stylesheet Language Transformations",
+]
+
+
+# Extended exclusion list for clean_logical_loc (spec column BG). Superset of
+# scc_exclude_dirs covering third-party code under non-standard names: CMS
+# cores, committed framework/plugin copies, build outputs, tool caches.
+# Matching is case-sensitive and supports path suffixes: "Plugins" (Unity SDK
+# convention) does NOT match lowercase "plugins" (often first-party code);
+# "protected/extensions" matches only that path pair. "external" is
+# intentionally absent (unlike scc_exclude_dirs): that name is regularly used
+# for first-party code. logical_loc (G) keeps scc_exclude_dirs unchanged.
+clean_scc_exclude_dirs = [
+    "node_modules", "bower_components", "jspm_packages",
+    "node_modules_1",
+    "vendor", "vendors", "Godeps",
+    ".venv", "venv", "site-packages", "_vendor", "__pycache__", ".tox",
+    "Pods", "Carthage", "SourcePackages", "DerivedData",
+    "deps",
+    "third_party", "thirdparty", "vcpkg_installed",
+    "renv", "elm-stuff", "haxe_libraries", "lua_modules", "nimbledeps",
+    "libs", ".terraform", "submodules",
+    "dist", "build", "target", ".gradle", ".dart_tool",
+    "obj", "bin", ".yarn",
+    # CMS cores and their data/upload trees (Bitrix, WordPress)
+    "bitrix", "upload", "wp-admin", "wp-includes",
+    # committed framework / library copies
+    "libraries", "jquery", "bootstrap",
+    "protected/extensions", "protected/vendors",
+    # Unity Asset Store SDKs (capital P by convention)
+    "Plugins",
+    # Cordova generated platform scaffolding
+    "platforms",
+]
+
+# Languages excluded from clean_logical_loc (spec column BG). Narrower than
+# non_code_languages: hand-written markup counts as code there — HTML, CSS and
+# its preprocessors, logic-less templates, XAML and hand-written IDL (GraphQL,
+# Protocol Buffers, XSLT) stay IN. XML and SQL are absent on purpose: they are
+# decided per file (Android res/ XML counts as code; SQL counts unless the
+# file is a database dump).
+clean_non_code_languages = [
+    "SVG", "JSON", "JSONL", "Markdown", "MDX",
+    "Plain Text", "CSV", "YAML", "TOML", "INI", "XML Schema",
+    "License", "Properties File", "Docker ignore",
+    # notebook JSON (scc weighs the notebook JSON, not the code inside)
+    "Jupyter",
+    "ReStructuredText", "Rich Text Format", "Patch", "DOT",
+    "MSBuild", "Web Services Description Language",
+    "Report Definition Language", "Module-Definition",
+    "Windows Resource-Definition Script",
+    "Xcode Config", "Systemd", "Bitbucket Pipeline", "CloudFormation (YAML)",
+    "Avro", "Gherkin Specification",
 ]

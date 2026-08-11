@@ -48,6 +48,7 @@ from .git import (
 from .infra import CIChecksMetric, ContainerizedMetric, DeploymentMetric, MonitoringMetric
 from .loc import (
     AutoGenLocMetric,
+    CleanLogicalLocMetric,
     CommentRatioMetric,
     DepDirLocMetric,
     LogicalLocMetric,
@@ -124,4 +125,6 @@ __all__ = [
     "ClassesCountMetric",
     "UntestedFilesPctMetric",
     "MergedPRMetric",
+    # clean_logical_loc (BG) — code-languages-only counterpart of G
+    "CleanLogicalLocMetric",
 ]
