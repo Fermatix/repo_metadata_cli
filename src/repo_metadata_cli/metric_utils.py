@@ -8,7 +8,7 @@ import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, cast
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple, cast
 
 from .allowed_files import AllowedFiles
 from .tree_sitter_support import TreeSitterManager
@@ -48,15 +48,58 @@ class FunctionLengthStats:
 _ITER_VCS_DIRS = frozenset({".git", ".hg", ".svn"})
 
 
+def compile_exclude_matcher(
+    exclude_dirs: Optional[Iterable[str]] = None,
+) -> "Callable[[Sequence[str]], bool]":
+    """Build a predicate telling whether a path lies in an excluded directory.
+
+    Mirrors scc's ``--exclude-dir`` semantics so every metric sees the same
+    file set, whether it comes from scc or from a Python walk:
+
+    * a bare name (``node_modules``) matches that directory at ANY depth;
+    * a path with separators (``bitrix/modules``) matches those segments in
+      sequence at ANY depth, so an installation nested under ``www/`` or a
+      backup copy is caught as well;
+    * matching is case-sensitive, like scc — ``Plugins`` (a vendor SDK
+      convention) must not silently take out a first-party ``plugins``.
+
+    The predicate takes the DIRECTORY segments of a repo-relative path.
+    """
+    bare: Set[str] = set()
+    chains: List[Tuple[str, ...]] = []
+    for raw in exclude_dirs or ():
+        entry = str(raw).strip().strip("/")
+        if not entry:
+            continue
+        parts = tuple(p for p in entry.split("/") if p)
+        if len(parts) == 1:
+            bare.add(parts[0])
+        elif parts:
+            chains.append(parts)
+
+    def matches(dir_parts: "Sequence[str]") -> bool:
+        if any(part in bare for part in dir_parts):
+            return True
+        for chain in chains:
+            span = len(chain)
+            for start in range(len(dir_parts) - span + 1):
+                if tuple(dir_parts[start : start + span]) == chain:
+                    return True
+        return False
+
+    return matches
+
+
 def iter_code_files(
     repo_dir: Path,
     allowed_files: AllowedFiles,
     exclude_dirs: Optional[List[str]] = None,
 ) -> Iterable[Path]:
-    """Yield parseable code files, skipping directories named in
-    ``exclude_dirs`` (exact path-segment match, any depth) — pass
-    ``settings.metrics.scc_exclude_dirs`` to keep tree-sitter metrics on the
-    same vendor-free file set as logical_loc.
+    """Yield parseable code files, skipping directories listed in
+    ``exclude_dirs`` (bare names and ``a/b`` paths, any depth — see
+    ``compile_exclude_matcher``) — pass ``settings.metrics.scc_exclude_dirs``
+    to keep tree-sitter metrics on the same vendor-free file set as
+    logical_loc.
 
     Generated files (``*.min.js``, ``*.d.ts``, ``*_pb2.py``, ``*.g.dart`` …)
     and files over 2 MB are skipped via the same rules as the test-coverage
@@ -66,11 +109,11 @@ def iter_code_files(
     # late import: coverage_estimate is a leaf module (no metric_utils import)
     from .coverage_estimate import GENERATED_FILE_RE, MAX_FILE_BYTES
 
-    excluded = _ITER_VCS_DIRS | set(exclude_dirs or ())
+    is_excluded = compile_exclude_matcher(list(_ITER_VCS_DIRS) + list(exclude_dirs or ()))
     for path in repo_dir.rglob("*"):
         if not path.is_file():
             continue
-        if any(part in excluded for part in path.relative_to(repo_dir).parts[:-1]):
+        if is_excluded(path.relative_to(repo_dir).parts[:-1]):
             continue
         if not allowed_files.is_code_path(path):
             continue

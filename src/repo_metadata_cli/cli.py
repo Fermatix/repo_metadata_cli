@@ -6,7 +6,7 @@ import json
 import logging
 import subprocess
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import typer
 
@@ -110,6 +110,20 @@ def metadata(
         False,
         "--install-hg",
         help="Install Mercurial automatically when the input contains hg repositories and hg is missing.",
+    ),
+    exclude_dir: Optional[List[str]] = typer.Option(
+        None,
+        "--exclude-dir",
+        help=(
+            "Extra directory to leave out of the code metrics, repeatable. "
+            "A bare name (vendor) matches at any depth; a path (bitrix/modules) "
+            "matches those segments in sequence at any depth. Applies to "
+            "logical_loc, clean_logical_loc, the language/extension shares, "
+            "symbols_count, the tree-sitter counts and the test estimates; "
+            "raw_loc keeps counting the whole tree by definition. "
+            "WARNING: this changes what logical_loc means for the run, so the "
+            "resulting CSV is not comparable with a default one."
+        ),
     ),
 ) -> None:
     """Fetch bundles, enrich PR counts, and compute metadata — all in one step.
@@ -244,6 +258,18 @@ def metadata(
     )
     allowed_files = _build_allowed_files(config_file)
     ts_manager = _build_ts_manager(ts_config, skip_tree_sitter)
+
+    if exclude_dir:
+        extra = [d.strip() for d in exclude_dir if d and d.strip()]
+        settings.metrics.extra_exclude_dirs = extra
+        for target in (settings.metrics.scc_exclude_dirs, settings.metrics.clean_scc_exclude_dirs):
+            target.extend(d for d in extra if d not in target)
+        logger.warning(
+            "Extra exclusions requested (--exclude-dir): %s. Every metric is "
+            "computed WITHOUT these paths, so this CSV is not comparable with a "
+            "default run — say so when handing the file over.",
+            ", ".join(extra),
+        )
 
     summary = run_metadata_pipeline(
         dataset_dir=dataset_dir,
