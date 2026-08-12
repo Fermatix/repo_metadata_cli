@@ -14,6 +14,7 @@ from .allowed_files import AllowedFiles
 from .config import AllowedFilesConfig, TreeSitterConfig
 from .fetcher import fetch_bundles
 from .pipeline import run_metadata_pipeline
+from .hg_check import ensure_hg
 from .scc_check import ensure_scc
 from .settings import load_app_settings, update_extensions_config
 from .tree_sitter_support import TreeSitterManager
@@ -105,6 +106,11 @@ def metadata(
         "--install-scc",
         help="Download and install the official scc binary automatically when it is missing.",
     ),
+    install_hg_flag: bool = typer.Option(
+        False,
+        "--install-hg",
+        help="Install Mercurial automatically when the input contains hg repositories and hg is missing.",
+    ),
 ) -> None:
     """Fetch bundles, enrich PR counts, and compute metadata — all in one step.
 
@@ -137,6 +143,9 @@ def metadata(
     # scc считает все LOC/языковые колонки; без него они молча уходят нулями —
     # поэтому падаем сразу, до скачивания бандлов.
     ensure_scc(auto_install=install_scc_flag)
+    # hg нужен только при Mercurial-репозиториях во входных данных; без него
+    # все метрики истории так же молча ушли бы нулями.
+    ensure_hg(dataset_path, auto_install=install_hg_flag)
 
     repos_file: Optional[Path] = None
 
