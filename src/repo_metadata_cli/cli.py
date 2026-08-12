@@ -236,13 +236,23 @@ def metadata(
     allowed_files = _build_allowed_files(config_file)
     ts_manager = _build_ts_manager(ts_config, skip_tree_sitter)
 
-    run_metadata_pipeline(
+    summary = run_metadata_pipeline(
         dataset_dir=dataset_dir,
         csv_path=output_csv,
         settings=settings,
         allowed_files=allowed_files,
         ts_manager=ts_manager,
     )
+    # The CSV is complete for everything that could be measured; a non-zero exit
+    # is the signal that some repository produced no row at all, so an automated
+    # run cannot mistake a partial result for a full one.
+    if summary.get("skipped"):
+        typer.echo(
+            f"WARNING: {len(summary['skipped'])} repository/repositories produced no row: "
+            + ", ".join(summary["skipped"]),
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
 
 @app.command("fetch-grammars")

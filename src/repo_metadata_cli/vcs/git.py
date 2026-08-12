@@ -8,16 +8,21 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import ClassVar, List, Optional, Tuple
 
 from ..utils import run_cmd
 from .base import BaseVCS
+from .checkout_repair import CheckoutRepair, restore_rejected_files
 
 logger = logging.getLogger(__name__)
 
 _CLONE_TIMEOUT = 720  # 10 min — enough for a 4+ GB bundle on a slow disk
+
+# Windows refuses paths over 260 chars unless this is on; harmless elsewhere.
+_LONG_PATHS: List[str] = ["-c", "core.longpaths=true"]
 
 # Record separators for one-shot `git log --format` parsing (hash vs body):
 # control chars never appear in commit messages in practice.
@@ -43,13 +48,18 @@ class GitVCS(BaseVCS):
         return (path / cls.history_dirname).exists()
 
     # --- materialization -----------------------------------------------------
+    #: Repair report of the LAST clone (None when the checkout was complete).
+    #: The pipeline reads it to report degraded repositories at the end of a run.
+    last_repair: Optional[CheckoutRepair] = None
+
     def clone(self, source: Path, dest_dir: Path) -> Optional[Path]:
         repo_dir = dest_dir / source.stem
         env = os.environ.copy()
         env.setdefault("GIT_LFS_SKIP_SMUDGE", "1")
+        self.last_repair = None
         try:
             result = subprocess.run(
-                ["git", "clone", str(source), str(repo_dir)],
+                ["git", *_LONG_PATHS, "clone", str(source), str(repo_dir)],
                 env=env,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -58,11 +68,72 @@ class GitVCS(BaseVCS):
         except subprocess.TimeoutExpired:
             logger.warning("Clone timed out after %ds: %s", _CLONE_TIMEOUT, source)
             return None
-        if result.returncode != 0 or not repo_dir.exists():
-            logger.warning("Failed to clone %s", source)
-            return None
 
-        # Ensure ALL remote branches are present as refs/remotes/origin/*.
+        if result.returncode != 0 or not repo_dir.exists():
+            # A non-zero clone usually means the history arrived but the working
+            # tree could not be laid out (paths the OS rejects — see
+            # checkout_repair).  Salvage it instead of dropping the repository.
+            if self._materialize_degraded(source, repo_dir, env) is None:
+                logger.warning("Failed to clone %s", source)
+                return None
+
+        self._fetch_all_branches(repo_dir, env)
+        logger.debug("Cloned %s into %s", source.name, repo_dir)
+        return repo_dir
+
+    def _materialize_degraded(
+        self, source: Path, repo_dir: Path, env: dict
+    ) -> Optional[Path]:
+        """Second attempt after a failed checkout: history first, files after.
+
+        ``--no-checkout`` never touches the working tree, so it succeeds even
+        when the tree cannot be materialized; the tolerant checkout that follows
+        then writes every path the OS accepts, and ``restore_rejected_files``
+        recovers the rest under sanitized names.  Returns None if even the
+        history could not be cloned.
+        """
+        if not (repo_dir / ".git").exists():
+            shutil.rmtree(repo_dir, ignore_errors=True)
+            try:
+                result = subprocess.run(
+                    ["git", *_LONG_PATHS, "clone", "--no-checkout", str(source), str(repo_dir)],
+                    env=env,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=_CLONE_TIMEOUT,
+                )
+            except subprocess.TimeoutExpired:
+                logger.warning("Clone timed out after %ds: %s", _CLONE_TIMEOUT, source)
+                return None
+            if result.returncode != 0 or not (repo_dir / ".git").exists():
+                return None
+
+        # Tolerated failure: per-path errors are expected here, that is the point.
+        subprocess.run(
+            ["git", "-C", str(repo_dir), *_LONG_PATHS, "checkout", "--force", "HEAD", "--", "."],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=_CLONE_TIMEOUT,
+        )
+        report = restore_rejected_files(repo_dir)
+        self.last_repair = report
+        if report.restored:
+            logger.warning(
+                "%s: %d file(s) could not be checked out by git and were restored "
+                "under sanitized names (e.g. %s)",
+                source.name, report.restored,
+                ", ".join(f"{a} -> {b}" for a, b in report.renamed[:3]) or "same name",
+            )
+        if report.failed:
+            logger.warning(
+                "%s: %d file(s) could not be restored at all: %s",
+                source.name, len(report.failed), ", ".join(report.failed[:5]),
+            )
+        return repo_dir
+
+    def _fetch_all_branches(self, repo_dir: Path, env: dict) -> None:
+        """Ensure ALL remote branches are present as refs/remotes/origin/*."""
         subprocess.run(
             [
                 "git", "-C", str(repo_dir), "fetch", "--quiet", "--force",
@@ -74,9 +145,6 @@ class GitVCS(BaseVCS):
             stderr=subprocess.DEVNULL,
             timeout=_CLONE_TIMEOUT,
         )
-
-        logger.debug("Cloned %s into %s", source.name, repo_dir)
-        return repo_dir
 
     def latest_branch(self, repo_dir: Path) -> Optional[str]:
         refs_raw = run_cmd(

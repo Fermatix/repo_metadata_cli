@@ -373,13 +373,32 @@ def _backfill_repo_row(
         )
 
 
+def _log_run_summary(skipped: list[str], degraded: list[str]) -> None:
+    """Report repositories that produced no row / an incomplete working tree.
+
+    Without this a failed materialization was only a single line in the middle
+    of the log and the repository silently missing from the CSV.
+    """
+    if skipped:
+        logger.warning(
+            "%d repository/repositories produced NO row (materialization failed): %s",
+            len(skipped), ", ".join(skipped),
+        )
+    if degraded:
+        logger.warning(
+            "%d repository/repositories were measured from a repaired working tree "
+            "(some paths the OS rejects were restored under sanitized names): %s",
+            len(degraded), ", ".join(degraded),
+        )
+
+
 def run_metadata_pipeline(
     dataset_dir: Path,
     csv_path: Path,
     settings: AppSettings,
     allowed_files: AllowedFiles,
     ts_manager: Optional[TreeSitterManager],
-) -> None:
+) -> Dict[str, list]:
     bundle_files = sorted(
         p for glob in _BUNDLE_GLOBS for p in dataset_dir.rglob(glob)
     )
@@ -398,7 +417,7 @@ def run_metadata_pipeline(
                 "No *.bundle files and no subdirectories found under %s; nothing to process.",
                 dataset_dir,
             )
-            return
+            return {"skipped": [], "degraded": []}
         logger.info(
             "Found %d local repo directories under %s (no-VCS mode)",
             len(local_dirs), dataset_dir,
@@ -413,6 +432,8 @@ def run_metadata_pipeline(
     backfill_keys = rows_needing_backfill(csv_path)
 
     processed = _processed_repos(csv_path)
+    skipped: list[str] = []
+    degraded: list[str] = []
 
     for item in tqdm(items, desc="Metadata"):
         stem = item.name if local_mode else item.stem
@@ -444,7 +465,12 @@ def run_metadata_pipeline(
                 ctx = build_repo_context(item, settings, allowed_files, ts_manager, Path(tmpdir))
                 if ctx is None:
                     logger.error("Skipping %s: failed to materialize repository", item.name)
+                    skipped.append(stem)
                     continue
+                # A repaired working tree still yields a full row; record it so
+                # the end-of-run summary can flag the repository as degraded.
+                if getattr(ctx.vcs, "last_repair", None) is not None:
+                    degraded.append(stem)
                 row = run_pipeline(ctx)
 
         row_df = pd.DataFrame([row])
@@ -471,5 +497,7 @@ def run_metadata_pipeline(
     # dataset, or computation failed) are kept as-is and reported; the empty
     # cells make them retryable on the next run.
     warn_unfilled_rows(csv_path)
+    _log_run_summary(skipped, degraded)
 
     logger.info("Metadata pipeline finished; %d repositories processed.", len(processed))
+    return {"skipped": skipped, "degraded": degraded}
