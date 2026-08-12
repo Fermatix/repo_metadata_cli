@@ -135,6 +135,13 @@ class MetricsSettings:
             "il2cppoutput", "il2cppoutputproject",
         ]
     )
+    # Paths excluded on top of the configured lists by the run itself
+    # (``--exclude-dir`` on the command line).  Kept separately from
+    # scc_exclude_dirs so that metrics which do NOT use that list — the
+    # tracked-file set behind test_coverage_pct / untested_files_pct — can
+    # honour the caller's intent without inheriting the default vendor list
+    # and silently changing their meaning for everyone else.
+    extra_exclude_dirs: List[str] = field(default_factory=list)
     non_code_languages: List[str] = field(
         # scc language names excluded from primary_language (L),
         # lang_distribution (M) and stack (AM). Mirror of the client-agreed

@@ -151,17 +151,27 @@ class RepoContext:
         """
         def _compute() -> list[str]:
             tracked = self.vcs.tracked_files(self.repo_path)
-            if tracked:
-                return tracked
-            return sorted(
-                p.relative_to(self.repo_path).as_posix()
-                for p in self.repo_path.rglob("*")
-                if p.is_file()
-                and not any(
-                    part.startswith(".")
-                    for part in p.relative_to(self.repo_path).parts
+            if not tracked:
+                tracked = sorted(
+                    p.relative_to(self.repo_path).as_posix()
+                    for p in self.repo_path.rglob("*")
+                    if p.is_file()
+                    and not any(
+                        part.startswith(".")
+                        for part in p.relative_to(self.repo_path).parts
+                    )
                 )
-            )
+            # Paths the run was told to ignore (--exclude-dir) are not part of
+            # the repository for ANY metric, including the coverage estimates.
+            # Only the caller's own list is applied here: the default vendor
+            # exclusions have never been part of this file set, and adding them
+            # would silently change test_coverage_pct for every repository.
+            extra = getattr(self.settings.metrics, "extra_exclude_dirs", None)
+            if extra:
+                from .metric_utils import compile_exclude_matcher  # late: cycle
+                is_excluded = compile_exclude_matcher(extra)
+                tracked = [p for p in tracked if not is_excluded(p.split("/")[:-1])]
+            return tracked
         return self._cached("tracked_files", _compute)
 
     @property
