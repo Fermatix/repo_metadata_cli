@@ -8,10 +8,23 @@ from ..base_metric import BaseMetric, RepoContext
 from ..metric_utils import (
     count_chars_in_files,
     get_auto_gen_loc,
-    get_clean_logical_loc,
+    get_clean_loc_split,
     get_dependency_dir_loc,
     get_scc_file_stats,
 )
+
+
+def _clean_split(ctx: RepoContext):
+    """One scc pass shared by BG/BH/BI (cached per repository)."""
+    return ctx._cached(
+        "clean_loc_split",
+        lambda: get_clean_loc_split(
+            ctx.repo_path,
+            exclude_dirs=list(ctx.settings.metrics.clean_scc_exclude_dirs),
+            non_code_languages=set(ctx.settings.metrics.clean_non_code_languages),
+            autogen_dirs=set(ctx.settings.metrics.autogen_dirs),
+        ),
+    )
 
 
 class RawLocMetric(BaseMetric):
@@ -67,11 +80,40 @@ class CleanLogicalLocMetric(BaseMetric):
     field_name = "clean_logical_loc"
 
     def compute(self, ctx: RepoContext) -> Any:
-        return get_clean_logical_loc(
-            ctx.repo_path,
-            exclude_dirs=list(ctx.settings.metrics.clean_scc_exclude_dirs),
-            non_code_languages=set(ctx.settings.metrics.clean_non_code_languages),
-        )
+        return _clean_split(ctx)[0]
+
+
+class CleanHandwrittenLocMetric(BaseMetric):
+    """BH: hand-written code — ``clean_logical_loc`` minus the generated share
+    measured on that same file set (BI).
+
+    This is what per-line valuation wants: BG still keeps codegen inside, and
+    autogen_loc (H) cannot be subtracted from it because H is measured over the
+    logical_loc file set — a different, larger set that includes data formats,
+    dumps and CMS cores.  Subtracting H from BG therefore over-counts, badly:
+    a repository can hold millions of generated data lines while almost none of
+    its code is generated."""
+
+    column = "BH"
+    field_name = "clean_handwritten_loc"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        total, generated = _clean_split(ctx)
+        return total - generated
+
+
+class AutogenInCleanLocMetric(BaseMetric):
+    """BI: the generated share of the clean file set — the part of
+    ``clean_logical_loc`` that autogen detection flags.
+
+    Reported alongside BH so the split is visible without recomputing it, and
+    so ``BG == BH + BI`` holds by construction."""
+
+    column = "BI"
+    field_name = "autogen_in_clean_loc"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return _clean_split(ctx)[1]
 
 
 class DepDirLocMetric(BaseMetric):

@@ -20,11 +20,13 @@ from .csv_migration import (
 )
 from .metrics import (  # metrics/ package — all metric classes via __init__.py
     AutoGenLocMetric,
+    AutogenInCleanLocMetric,
     AvgFuncLengthMetric,
-    CleanLogicalLocMetric,
     AvgLocPerPRMetric,
     BranchCountMetric,
     ClassesCountMetric,
+    CleanHandwrittenLocMetric,
+    CleanLogicalLocMetric,
     CommentRatioMetric,
     DepDirLocMetric,
     CIChecksMetric,
@@ -163,6 +165,8 @@ TRAILING_METRICS: list[Type[BaseMetric]] = [
     UntestedFilesPctMetric,  # BE
     MergedPRMetric,          # BF
     CleanLogicalLocMetric,   # BG
+    CleanHandwrittenLocMetric,  # BH
+    AutogenInCleanLocMetric,    # BI
 ]
 
 
