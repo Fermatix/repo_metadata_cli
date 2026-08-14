@@ -505,7 +505,11 @@ def test_incremental_csv_schema_mismatch_does_not_corrupt(tmp_path):
     assert all(pd.isna(alpha[c]) for c in NEW_COLUMNS)
     # beta is new: its trailing metrics are filled (plain dir -> zeros,
     # except untested_files_pct: one code file with no tests = 100, and
-    # clean_logical_loc: the single Python code line).
+    # clean_logical_loc: the single Python code line, all of it hand-written).
     beta = df[df["repo_name"] == "beta"].iloc[0]
-    expected = dict.fromkeys(NEW_COLUMNS, 0) | {"untested_files_pct": 100, "clean_logical_loc": 1}
+    expected = dict.fromkeys(NEW_COLUMNS, 0) | {
+        "untested_files_pct": 100,
+        "clean_logical_loc": 1,
+        "clean_handwritten_loc": 1,
+    }
     assert {c: int(beta[c]) for c in NEW_COLUMNS} == expected

@@ -598,25 +598,51 @@ def get_clean_logical_loc(
     keeps codegen inside; autogen_loc measures that share separately.
     Returns 0 if scc is unavailable.
     """
+    return get_clean_loc_split(repo_dir, exclude_dirs, non_code_languages)[0]
+
+
+def get_clean_loc_split(
+    repo_dir: Path,
+    exclude_dirs: Optional[List[str]] = None,
+    non_code_languages: Optional[Set[str]] = None,
+    autogen_dirs: Optional[Set[str]] = None,
+) -> Tuple[int, int]:
+    """Return ``(clean_logical_loc, autogen_in_clean_loc)`` in one scc pass.
+
+    The second element is the generated share **measured on the clean file set**
+    (columns BH/BI).  It cannot be derived from ``autogen_loc`` (H): that column
+    is measured over the logical_loc file set, which includes data formats, CMS
+    cores and dumps that the clean set drops.  The two are counts over different
+    file sets, so their overlap has to be measured, not inferred — a repository
+    can carry millions of generated data lines while barely any of its *code*
+    is generated.
+
+    ``clean_handwritten_loc`` (BH) is ``clean_logical_loc - autogen_in_clean_loc``;
+    it is the hand-written code of the repository, which is what per-line
+    valuation actually wants.  Returns ``(0, 0)`` if scc is unavailable.
+    """
     nc_langs = non_code_languages or set()
+    _dirs = autogen_dirs if autogen_dirs is not None else _AUTOGEN_DIRS
     total = 0
+    generated = 0
     for entry in get_scc_file_stats(repo_dir, exclude_dirs=exclude_dirs):
         code = int(entry["code"])
         if code <= 0:
             continue
         language = str(entry.get("language") or "")
+        path = Path(entry["path"])
         if language == "XML":
-            if _is_android_res_xml(Path(entry["path"]), repo_dir):
-                total += code
-            continue
-        if language == "SQL":
-            if not _is_sql_dump(Path(entry["path"])):
-                total += code
-            continue
-        if language in nc_langs:
+            if not _is_android_res_xml(path, repo_dir):
+                continue
+        elif language == "SQL":
+            if _is_sql_dump(path):
+                continue
+        elif language in nc_langs:
             continue
         total += code
-    return total
+        if _is_autogen_file(path, repo_dir, _dirs):
+            generated += code
+    return total, generated
 
 
 def get_dependency_dir_loc(repo_dir: Path, dep_dir_names: Optional[Set[str]] = None) -> int:
