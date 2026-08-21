@@ -13,6 +13,7 @@ from pathlib import Path
 from subprocess import run
 
 import pandas as pd
+import pytest
 
 from repo_metadata_cli.allowed_files import AllowedFiles
 from repo_metadata_cli.config import AllowedFilesConfig
@@ -78,10 +79,24 @@ _EXPECTED = {
     "untested_files_pct": 67, "merged_pr_count": 1,
     "clean_logical_loc": 130,
     "clean_handwritten_loc": 130, "autogen_in_clean_loc": 0,
+    "meta_logical_loc": 0, "meta_non_authored_loc": 0,
+    "meta_duplication_ratio": 0, "meta_non_merge_commit_count": 0,
+    "meta_loc_with_generated": 0,
 }
 
 assert set(_EXPECTED) == set(NEW_COLUMNS)
 assert [m.field_name for m in TRAILING_METRICS] == list(NEW_COLUMNS)
+
+
+@pytest.fixture(autouse=True)
+def _stable_external_metrics(monkeypatch):
+    """Schema tests do not depend on locally installed scc/jscpd/git tools."""
+    from repo_metadata_cli.metrics import external
+
+    monkeypatch.setattr(external, "get_meta_logical_loc", lambda repo: 0)
+    monkeypatch.setattr(external, "get_meta_scc_with_generated_report", lambda repo: "")
+    monkeypatch.setattr(external, "get_meta_duplication_ratio", lambda repo: 0.0)
+    monkeypatch.setattr(external, "get_meta_non_merge_commit_count", lambda repo: 0)
 
 
 # --- unit level --------------------------------------------------------------

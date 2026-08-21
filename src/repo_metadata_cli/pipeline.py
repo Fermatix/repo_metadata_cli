@@ -53,6 +53,11 @@ from .metrics import (  # metrics/ package — all metric classes via __init__.p
     LangDistributionMetric,
     LicenseTypeMetric,
     LogicalLocMetric,
+    MetaDuplicationRatioMetric,
+    MetaLocWithGeneratedMetric,
+    MetaLogicalLocMetric,
+    MetaNonAuthoredLocMetric,
+    MetaNonMergeCommitCountMetric,
     MergedPRMetric,
     MetadataBranchNameMetric,
     MetadataCommitHashMetric,
@@ -167,6 +172,11 @@ TRAILING_METRICS: list[Type[BaseMetric]] = [
     CleanLogicalLocMetric,   # BG
     CleanHandwrittenLocMetric,  # BH
     AutogenInCleanLocMetric,    # BI
+    MetaLogicalLocMetric,       # BJ
+    MetaNonAuthoredLocMetric,   # BK
+    MetaDuplicationRatioMetric, # BL
+    MetaNonMergeCommitCountMetric,  # BM
+    MetaLocWithGeneratedMetric,  # BN
 ]
 
 
