@@ -140,6 +140,19 @@ process_repo() {
     return 1
   fi
 
+  # A local working clone keeps only the checked-out branch under refs/heads;
+  # every other branch lives under refs/remotes/origin/*. `git clone` of the
+  # bundle (and every --all based metric) sees heads only, so promote those
+  # remote-tracking refs to heads — never overriding a head that already exists.
+  local tracking_ref branch_name
+  while IFS= read -r tracking_ref; do
+    branch_name="${tracking_ref#refs/remotes/origin/}"
+    [[ -z "$branch_name" || "$branch_name" == "HEAD" ]] && continue
+    if ! git -C "$repo_dir" show-ref --verify --quiet "refs/heads/$branch_name"; then
+      git -C "$repo_dir" update-ref "refs/heads/$branch_name" "$tracking_ref" 2>/dev/null || true
+    fi
+  done < <(git -C "$repo_dir" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null)
+
   # Set HEAD
   local remote_head_ref fallback_head
   remote_head_ref="$(git -C "$repo_dir" ls-remote --symref origin HEAD 2>/dev/null \
