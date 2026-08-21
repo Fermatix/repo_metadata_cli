@@ -19,6 +19,12 @@ from .docs import (
     LicenseTypeMetric,
     ReadmeQualityMetric,
 )
+from .external import (
+    MetaDuplicationRatioMetric,
+    MetaLogicalLocMetric,
+    MetaNonAuthoredLocMetric,
+    MetaNonMergeCommitCountMetric,
+)
 from .files import (
     ExtensionsMetric,
     FullLangDistributionMetric,
@@ -132,4 +138,9 @@ __all__ = [
     "CleanLogicalLocMetric",
     "CleanHandwrittenLocMetric",
     "AutogenInCleanLocMetric",
+    # externally defined comparison metrics (BJ-BM)
+    "MetaLogicalLocMetric",
+    "MetaNonAuthoredLocMetric",
+    "MetaDuplicationRatioMetric",
+    "MetaNonMergeCommitCountMetric",
 ]

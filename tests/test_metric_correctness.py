@@ -511,5 +511,6 @@ def test_incremental_csv_schema_mismatch_does_not_corrupt(tmp_path):
         "untested_files_pct": 100,
         "clean_logical_loc": 1,
         "clean_handwritten_loc": 1,
+        "meta_logical_loc": 1,
     }
     assert {c: int(beta[c]) for c in NEW_COLUMNS} == expected
