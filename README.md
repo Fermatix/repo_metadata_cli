@@ -63,9 +63,6 @@ cd repo_metadata_cli
 uv venv --seed -p 3.11
 source .venv/bin/activate
 uv sync
-
-# Установить языковые грамматики для анализа кода
-uv run repo-metadata fetch-grammars
 ```
 
 ---
