@@ -54,6 +54,7 @@ from .metrics import (  # metrics/ package — all metric classes via __init__.p
     LicenseTypeMetric,
     LogicalLocMetric,
     MetaDuplicationRatioMetric,
+    MetaLocWithGeneratedMetric,
     MetaLogicalLocMetric,
     MetaNonAuthoredLocMetric,
     MetaNonMergeCommitCountMetric,
@@ -175,6 +176,7 @@ TRAILING_METRICS: list[Type[BaseMetric]] = [
     MetaNonAuthoredLocMetric,   # BK
     MetaDuplicationRatioMetric, # BL
     MetaNonMergeCommitCountMetric,  # BM
+    MetaLocWithGeneratedMetric,  # BN
 ]
 
 

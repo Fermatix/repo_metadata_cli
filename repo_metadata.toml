@@ -469,6 +469,8 @@ wgsl = ["struct_declaration"]
 zig = ["ContainerDecl"]
 
 [metrics]
+# Рецепты meta_* фиксированы в коде и не настраиваются здесь, включая
+# meta_loc_with_generated; точные команды перечислены в README.
 # Dependency directories (spec column AE: dependency_dir_loc).
 # Excluded from Logical LOC and Auto-Generated LOC; counted separately.
 # IMPORTANT: every entry here must also appear in scc_exclude_dirs.

@@ -81,6 +81,7 @@ _EXPECTED = {
     "clean_handwritten_loc": 130, "autogen_in_clean_loc": 0,
     "meta_logical_loc": 0, "meta_non_authored_loc": 0,
     "meta_duplication_ratio": 0, "meta_non_merge_commit_count": 0,
+    "meta_loc_with_generated": 0,
 }
 
 assert set(_EXPECTED) == set(NEW_COLUMNS)
@@ -93,7 +94,7 @@ def _stable_external_metrics(monkeypatch):
     from repo_metadata_cli.metrics import external
 
     monkeypatch.setattr(external, "get_meta_logical_loc", lambda repo: 0)
-    monkeypatch.setattr(external, "get_meta_non_authored_loc", lambda repo: 0)
+    monkeypatch.setattr(external, "get_meta_scc_with_generated_report", lambda repo: "")
     monkeypatch.setattr(external, "get_meta_duplication_ratio", lambda repo: 0.0)
     monkeypatch.setattr(external, "get_meta_non_merge_commit_count", lambda repo: 0)
 

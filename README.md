@@ -241,7 +241,7 @@ repo-metadata metadata repos.txt \
 | `clean_handwritten_loc` | из `clean_logical_loc` вычтен генерат, посчитанный по тому же набору файлов — рукописный код репозитория |
 | `autogen_in_clean_loc` | генерат внутри `clean_logical_loc`; `clean_logical_loc = clean_handwritten_loc + autogen_in_clean_loc` |
 
-Четыре колонки нужны для сопоставления с результатами внешнего рецепта:
+Пять колонок нужны для сопоставления с результатами внешнего рецепта:
 
 | Колонка | Команда | Значение |
 |---|---|---|
@@ -249,6 +249,7 @@ repo-metadata metadata repos.txt \
 | `meta_non_authored_loc` | `scc . --gen --by-file --exclude-dir vendor,node_modules,dist,build,generated,migrations --format json` | сумма `Files[].Code` только для файлов с `Generated == true` |
 | `meta_duplication_ratio` | `jscpd . --min-tokens 50 --min-lines 5 --reporters json --output <временный каталог>` | `statistics.total.percentage / 100` |
 | `meta_non_merge_commit_count` | `git log --oneline --no-merges` с фильтром `grep -v -i revert \| wc -l` | число non-merge-коммитов по HEAD без строк с `revert` в любом регистре |
+| `meta_loc_with_generated` | `scc . --gen --by-file --exclude-dir vendor,node_modules,dist,build,generated,migrations` | сумма `Files[].Code` по всем файлам; реализация добавляет `--format json` и переиспользует запуск `meta_non_authored_loc` |
 
 Для Mercurial `meta_non_merge_commit_count` равен 0. Если `scc`, `jscpd` или
 `git` недоступен либо команда завершается с ошибкой, соответствующая метрика

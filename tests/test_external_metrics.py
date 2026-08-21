@@ -11,6 +11,17 @@ import pytest
 from repo_metadata_cli.metrics import external
 
 
+class _CachedContext:
+    def __init__(self, repo_path: Path) -> None:
+        self.repo_path = repo_path
+        self._cache = {}
+
+    def _cached(self, key, fn):
+        if key not in self._cache:
+            self._cache[key] = fn()
+        return self._cache[key]
+
+
 def test_parse_meta_logical_loc_sums_language_code() -> None:
     output = """[
         {"Name": "Python", "Code": 17},
@@ -35,6 +46,21 @@ def test_parse_meta_non_authored_loc_selects_generated_true() -> None:
     ]"""
     assert external.parse_meta_non_authored_loc(output) == 24
     assert external.parse_meta_non_authored_loc("{}") == 0
+
+
+def test_parse_meta_loc_with_generated_sums_code_for_every_file() -> None:
+    output = """[
+        {"Name": "Python", "Files": [
+            {"Location": "generated.py", "Generated": true, "Code": 11},
+            {"Location": "authored.py", "Generated": false, "Code": 7}
+        ]},
+        {"Name": "Go", "Files": [
+            {"Location": "model.pb.go", "Generated": true, "Code": 13},
+            {"Location": "bad.go", "Code": "unknown"}
+        ]}
+    ]"""
+    assert external.parse_meta_loc_with_generated(output) == 31
+    assert external.parse_meta_loc_with_generated("{}") == 0
 
 
 def test_parse_meta_duplication_ratio_reads_total_percentage() -> None:
@@ -64,7 +90,7 @@ def test_meta_logical_loc_uses_exact_scc_command(monkeypatch, tmp_path: Path) ->
     assert calls == [(["scc", ".", "--format", "json"], tmp_path, "meta_logical_loc")]
 
 
-def test_meta_non_authored_loc_uses_exact_scc_command(
+def test_meta_scc_with_generated_report_uses_exact_command(
     monkeypatch, tmp_path: Path
 ) -> None:
     calls = []
@@ -74,7 +100,7 @@ def test_meta_non_authored_loc_uses_exact_scc_command(
         return '[{"Name":"Go","Files":[{"Generated":true,"Code":5}]}]'
 
     monkeypatch.setattr(external, "_run_stdout", fake_run)
-    assert external.get_meta_non_authored_loc(tmp_path) == 5
+    assert "\"Code\":5" in external.get_meta_scc_with_generated_report(tmp_path)
     assert calls == [
         (
             [
@@ -88,9 +114,29 @@ def test_meta_non_authored_loc_uses_exact_scc_command(
                 "json",
             ],
             tmp_path,
-            "meta_non_authored_loc",
+            "meta_non_authored_loc/meta_loc_with_generated",
         )
     ]
+
+
+def test_scc_with_generated_report_is_shared_by_both_metrics(
+    monkeypatch, tmp_path: Path
+) -> None:
+    calls = []
+
+    def fake_report(repo_path):
+        calls.append(repo_path)
+        return """[{"Files":[
+            {"Generated":true,"Code":5},
+            {"Generated":false,"Code":7}
+        ]}]"""
+
+    monkeypatch.setattr(external, "get_meta_scc_with_generated_report", fake_report)
+    ctx = _CachedContext(tmp_path)
+
+    assert external.MetaNonAuthoredLocMetric().compute(ctx) == 5
+    assert external.MetaLocWithGeneratedMetric().compute(ctx) == 12
+    assert calls == [tmp_path]
 
 
 def test_meta_duplication_ratio_uses_exact_jscpd_flags(

@@ -48,6 +48,7 @@ NEW_COLUMNS: tuple = (
     "meta_non_authored_loc",
     "meta_duplication_ratio",
     "meta_non_merge_commit_count",
+    "meta_loc_with_generated",
 )
 
 

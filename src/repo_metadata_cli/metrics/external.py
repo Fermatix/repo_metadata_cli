@@ -1,4 +1,4 @@
-"""Externally defined comparison metrics (columns BJ-BM)."""
+"""Externally defined comparison metrics (columns BJ-BN)."""
 
 from __future__ import annotations
 
@@ -106,6 +106,23 @@ def parse_meta_non_authored_loc(output: str) -> int:
     return total
 
 
+def parse_meta_loc_with_generated(output: str) -> int:
+    """Sum ``Files[].Code`` for every file in the fixed scc report."""
+    total = 0
+    for language in _parse_json_list(output):
+        files = language.get("Files")
+        if not isinstance(files, list):
+            continue
+        for file_data in files:
+            if not isinstance(file_data, dict):
+                continue
+            try:
+                total += int(file_data.get("Code") or 0)
+            except (TypeError, ValueError):
+                continue
+    return total
+
+
 def parse_meta_duplication_ratio(output: str) -> float:
     """Read ``statistics.total.percentage / 100`` from a jscpd JSON report."""
     try:
@@ -130,8 +147,9 @@ def get_meta_logical_loc(repo_path: Path) -> int:
     return parse_meta_logical_loc(output)
 
 
-def get_meta_non_authored_loc(repo_path: Path) -> int:
-    output = _run_stdout(
+def get_meta_scc_with_generated_report(repo_path: Path) -> str:
+    """Run the shared scc recipe for both generated-code comparison metrics."""
+    return _run_stdout(
         [
             "scc",
             ".",
@@ -143,9 +161,8 @@ def get_meta_non_authored_loc(repo_path: Path) -> int:
             "json",
         ],
         repo_path,
-        "meta_non_authored_loc",
+        "meta_non_authored_loc/meta_loc_with_generated",
     )
-    return parse_meta_non_authored_loc(output)
 
 
 def get_meta_duplication_ratio(repo_path: Path) -> float:
@@ -212,7 +229,12 @@ class MetaNonAuthoredLocMetric(BaseMetric):
     def compute(self, ctx: RepoContext) -> Any:
         return ctx._cached(
             "meta_non_authored_loc",
-            lambda: get_meta_non_authored_loc(ctx.repo_path),
+            lambda: parse_meta_non_authored_loc(
+                ctx._cached(
+                    "meta_scc_with_generated_report",
+                    lambda: get_meta_scc_with_generated_report(ctx.repo_path),
+                )
+            ),
         )
 
 
@@ -241,4 +263,22 @@ class MetaNonMergeCommitCountMetric(BaseMetric):
         return ctx._cached(
             "meta_non_merge_commit_count",
             lambda: get_meta_non_merge_commit_count(ctx.repo_path),
+        )
+
+
+class MetaLocWithGeneratedMetric(BaseMetric):
+    """BN: all Code from the fixed scc recipe, including generated files."""
+
+    column = "BN"
+    field_name = "meta_loc_with_generated"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return ctx._cached(
+            "meta_loc_with_generated",
+            lambda: parse_meta_loc_with_generated(
+                ctx._cached(
+                    "meta_scc_with_generated_report",
+                    lambda: get_meta_scc_with_generated_report(ctx.repo_path),
+                )
+            ),
         )
