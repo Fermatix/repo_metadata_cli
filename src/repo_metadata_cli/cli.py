@@ -15,6 +15,7 @@ from .config import AllowedFilesConfig, TreeSitterConfig
 from .crm_upload import CRMUploadError, upload_csv
 from .fetcher import fetch_bundles
 from .hg_check import ensure_hg
+from .jscpd_check import ensure_jscpd
 from .pipeline import run_metadata_pipeline
 from .scc_check import ensure_scc
 from .settings import load_app_settings, update_extensions_config
@@ -136,6 +137,11 @@ def metadata(
         "--install-hg",
         help="Install Mercurial automatically when the input contains hg repositories and hg is missing.",
     ),
+    allow_missing_jscpd: bool = typer.Option(
+        False,
+        "--allow-missing-jscpd",
+        help="Run without jscpd and accept zeroed duplication_ratio / meta_duplication_ratio.",
+    ),
     exclude_dir: Optional[List[str]] = typer.Option(
         None,
         "--exclude-dir",
@@ -187,6 +193,9 @@ def metadata(
     # scc считает все LOC/языковые колонки; без него они молча уходят нулями —
     # поэтому падаем сразу, до скачивания бандлов.
     ensure_scc(auto_install=install_scc_flag)
+    # jscpd считает duplication_ratio и meta_duplication_ratio; без него обе
+    # колонки молча ушли бы нулями, неотличимыми от репозитория без дублей.
+    ensure_jscpd(allow_missing=allow_missing_jscpd)
     # hg нужен только при Mercurial-репозиториях во входных данных; без него
     # все метрики истории так же молча ушли бы нулями.
     ensure_hg(dataset_path, auto_install=install_hg_flag)
