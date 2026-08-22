@@ -279,7 +279,7 @@ repo-metadata metadata repos.txt \
 учётные данные кабинета в `--login` и `--password`:
 
 ```bash
-repo-metadata metadata repos.txt --upload --login '<логин из кабинета>' --password '<пароль>'
+repo-metadata metadata repos.txt --upload --login '<логин от кабинета>' --password '<пароль>'
 ```
 
 Вместо параметров логин и пароль можно задать переменными окружения `CRM_LOGIN` и
