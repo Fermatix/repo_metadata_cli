@@ -26,6 +26,10 @@ def _run_stdout(command: Sequence[str], repo_path: Path, metric_name: str) -> st
             cwd=repo_path,
             capture_output=True,
             text=True,
+            # Commit messages are not guaranteed to be UTF-8 (legacy CP1251
+            # histories); without errors="replace" the decode blows up and the
+            # metric is lost instead of degrading.
+            errors="replace",
             timeout=_COMMAND_TIMEOUT_SECONDS,
             check=False,
         )
