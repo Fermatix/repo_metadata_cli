@@ -275,17 +275,16 @@ repo-metadata metadata repos.txt \
 
 ## Шаг 6. Передача результата
 
-Чтобы загрузить готовый CSV в CRM сразу после сбора, передайте учётные данные через
-переменные окружения и добавьте `--upload`:
+Чтобы загрузить готовый CSV в CRM сразу после сбора, добавьте `--upload` и передайте
+учётные данные кабинета в `--login` и `--password`:
 
 ```bash
-export CRM_LOGIN='<логин из кабинета>'
-export CRM_PASSWORD='<пароль>'
-repo-metadata metadata repos.txt --upload
+repo-metadata metadata repos.txt --upload --login '<логин из кабинета>' --password '<пароль>'
 ```
 
-По умолчанию используется `https://crm.repos.fermatix.ai/`. Другой адрес задаётся через
-`--crm-url`. Без `--upload` файл `repo_metadata.csv` остаётся локальным.
+Вместо параметров логин и пароль можно задать переменными окружения `CRM_LOGIN` и
+`CRM_PASSWORD`. По умолчанию используется `https://crm.repos.fermatix.ai/`, другой адрес
+задаётся через `--crm-url`. Без `--upload` файл `repo_metadata.csv` остаётся локальным.
 
 ---
 
