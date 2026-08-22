@@ -12,9 +12,10 @@ import typer
 
 from .allowed_files import AllowedFiles
 from .config import AllowedFilesConfig, TreeSitterConfig
+from .crm_upload import CRMUploadError, upload_csv
 from .fetcher import fetch_bundles
-from .pipeline import run_metadata_pipeline
 from .hg_check import ensure_hg
+from .pipeline import run_metadata_pipeline
 from .scc_check import ensure_scc
 from .settings import load_app_settings, update_extensions_config
 from .tree_sitter_support import TreeSitterManager
@@ -60,6 +61,30 @@ def metadata(
         help="Directory with *.bundle files, or a .txt file with repository URLs (one per line).",
     ),
     output_csv: Path = typer.Option(Path("repo_metadata.csv"), "--output-csv", help="Where to store metadata CSV."),
+    upload: bool = typer.Option(
+        False,
+        "--upload",
+        help="Upload the generated CSV to CRM after the metadata pipeline finishes.",
+    ),
+    login: Optional[str] = typer.Option(
+        None,
+        "--login",
+        envvar="CRM_LOGIN",
+        help="CRM partner login.",
+        show_default=False,
+    ),
+    password: Optional[str] = typer.Option(
+        None,
+        "--password",
+        envvar="CRM_PASSWORD",
+        help="CRM partner password.",
+        show_default=False,
+    ),
+    crm_url: str = typer.Option(
+        "https://crm.repos.fermatix.ai/",
+        "--crm-url",
+        help="CRM base URL.",
+    ),
     config_file: Path = typer.Option(Path("repo_metadata.toml"), help="TOML config file path."),
     skip_tree_sitter: bool = typer.Option(False, help="Skip Tree-sitter metrics (docstring ratio, avg function length, function/class counts)."),
     bundles_dir: Path = typer.Option(
@@ -154,6 +179,11 @@ def metadata(
             --output-csv repo_metadata.csv \\
             --gitlab-token $GITLAB_TOKEN
     """
+    if upload and not login:
+        raise typer.BadParameter("required with --upload", param_hint="--login")
+    if upload and not password:
+        raise typer.BadParameter("required with --upload", param_hint="--password")
+
     # scc считает все LOC/языковые колонки; без него они молча уходят нулями —
     # поэтому падаем сразу, до скачивания бандлов.
     ensure_scc(auto_install=install_scc_flag)
@@ -278,15 +308,42 @@ def metadata(
         allowed_files=allowed_files,
         ts_manager=ts_manager,
     )
+    upload_failed = False
+    if upload:
+        try:
+            report = upload_csv(
+                csv_path=output_csv,
+                login=login or "",
+                password=password or "",
+                crm_url=crm_url,
+            )
+        except CRMUploadError as exc:
+            typer.echo(f"ERROR: {exc}", err=True)
+            upload_failed = True
+        else:
+            errors = report["errors"]
+            typer.echo(
+                "CRM import: "
+                f"created={report['created_count']}, "
+                f"updated={report['updated_count']}, "
+                f"errors={len(errors)}."
+            )
+            for error in errors:
+                row = error.get("row", "?") if isinstance(error, dict) else "?"
+                details = error.get("errors", []) if isinstance(error, dict) else [str(error)]
+                typer.echo(f"CRM row {row}: {'; '.join(map(str, details))}", err=True)
+
     # The CSV is complete for everything that could be measured; a non-zero exit
     # is the signal that some repository produced no row at all, so an automated
     # run cannot mistake a partial result for a full one.
-    if summary.get("skipped"):
+    skipped = summary.get("skipped")
+    if skipped:
         typer.echo(
-            f"WARNING: {len(summary['skipped'])} repository/repositories produced no row: "
-            + ", ".join(summary["skipped"]),
+            f"WARNING: {len(skipped)} repository/repositories produced no row: "
+            + ", ".join(skipped),
             err=True,
         )
+    if upload_failed or skipped:
         raise typer.Exit(code=1)
 
 
