@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -198,6 +199,19 @@ def test_meta_non_merge_commit_count_is_zero_for_mercurial(monkeypatch) -> None:
     monkeypatch.setattr(external, "get_meta_non_merge_commit_count", fail_if_called)
     ctx = SimpleNamespace(vcs=SimpleNamespace(name="hg"))
     assert external.MetaNonMergeCommitCountMetric().compute(ctx) == 0
+
+
+def test_run_stdout_survives_non_utf8_output(tmp_path: Path) -> None:
+    """Commit messages are not guaranteed to be UTF-8 (legacy encodings)."""
+    script = (
+        "import sys; "
+        "sys.stdout.buffer.write(b'a1 caf\\xe9 commit\\nb2 revert it\\n')"
+    )
+    output = external._run_stdout(
+        [sys.executable, "-c", script], tmp_path, "meta_non_merge_commit_count"
+    )
+    assert output.splitlines()[0].startswith("a1 caf")
+    assert external.parse_meta_non_merge_commit_count(output) == 1
 
 
 def test_missing_external_tool_logs_warning(
