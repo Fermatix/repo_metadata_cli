@@ -194,6 +194,7 @@ export MIRRORS_DIR BUNDLES_DIR OK_FILE
 
 total=0
 while IFS= read -r repo; do
+  repo="${repo%$'\r'}"           # CRLF input: a trailing \r makes git reject the URL
   [[ -z "${repo// }" ]] && continue
   [[ "$repo" =~ ^# ]]   && continue
   (( total++ )) || true

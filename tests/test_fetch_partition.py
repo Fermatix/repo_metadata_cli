@@ -113,6 +113,60 @@ def test_git_prefix_normalized_in_pure_git_file(tmp_path, monkeypatch):
     ]
 
 
+def test_crlf_file_normalized_in_pure_git_file(tmp_path, monkeypatch):
+    # A pure-git file with Windows line endings must be normalized (temp file):
+    # the bash script reads lines raw, and a trailing \r reaches git, which
+    # fails with "URL rejected: Malformed input to a URL function".
+    repos = tmp_path / "repos.txt"
+    repos.write_bytes(
+        b"https://github.com/org/g1.git\r\n"
+        b"https://gitlab.example.com/grp/g2.git\r\n"
+    )
+
+    captured = {}
+
+    def fake_run_git_script(repos_file, bundles_dir, mirrors_dir, ok_file, env):
+        captured["path"] = Path(repos_file)
+        captured["content"] = Path(repos_file).read_text(encoding="utf-8")
+
+    monkeypatch.setattr(fetcher, "_run_git_script", fake_run_git_script)
+    monkeypatch.setattr(fetcher, "fetch_hg_bundles", lambda *a, **k: None)
+
+    fetcher.fetch_bundles(repos, **_dirs(tmp_path))
+
+    assert captured["path"] != repos  # a normalized temp file, not the original
+    assert "\r" not in captured["content"]
+    assert captured["content"].splitlines() == [
+        "https://github.com/org/g1.git",
+        "https://gitlab.example.com/grp/g2.git",
+    ]
+
+
+def test_padded_urls_normalized_in_pure_git_file(tmp_path, monkeypatch):
+    # Leading/trailing whitespace around a URL must not reach the bash script.
+    repos = _write_repos(tmp_path, [
+        "  https://github.com/org/g1.git  ",
+        "https://github.com/org/g2.git",
+    ])
+
+    captured = {}
+
+    def fake_run_git_script(repos_file, bundles_dir, mirrors_dir, ok_file, env):
+        captured["path"] = Path(repos_file)
+        captured["content"] = Path(repos_file).read_text(encoding="utf-8")
+
+    monkeypatch.setattr(fetcher, "_run_git_script", fake_run_git_script)
+    monkeypatch.setattr(fetcher, "fetch_hg_bundles", lambda *a, **k: None)
+
+    fetcher.fetch_bundles(repos, **_dirs(tmp_path))
+
+    assert captured["path"] != repos
+    assert captured["content"].splitlines() == [
+        "https://github.com/org/g1.git",
+        "https://github.com/org/g2.git",
+    ]
+
+
 def test_only_hg_does_not_invoke_git_script(tmp_path, monkeypatch):
     repos = _write_repos(tmp_path, ["https://hg.mozilla.org/proj"])
 
