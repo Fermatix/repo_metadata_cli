@@ -39,16 +39,24 @@ def _partition_urls(repos_file: Path) -> Tuple[List[str], List[str], bool]:
 
     git URLs are returned with any ``git+`` prefix stripped (the bash script /
     git expect a bare URL); hg URLs are returned verbatim.  ``needs_norm`` is True
-    if any line carried an ``hg+``/``git+`` scheme prefix — in that case the
-    original file cannot be passed to the bash script as-is.
+    if any line carried an ``hg+``/``git+`` scheme prefix, CR line endings or
+    surrounding whitespace — in those cases the original file cannot be passed
+    to the bash script as-is.
     """
     git_urls: List[str] = []
     hg_urls: List[str] = []
-    needs_norm = False
-    for line in repos_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+    # read_bytes, not read_text: universal-newline decoding would hide the \r of
+    # CRLF endings. splitlines() consumes it too, so it never shows up in the
+    # lines below — but the bash script reads the file raw and would pass the \r
+    # to git, which rejects the URL ("Malformed input to a URL function").
+    text = repos_file.read_bytes().decode("utf-8", errors="ignore")
+    needs_norm = "\r" in text
+    for line in text.splitlines():
         url = line.strip()
         if not url or url.startswith("#"):
             continue
+        if url != line:
+            needs_norm = True
         bare = strip_vcs_scheme(url)
         if bare != url:
             needs_norm = True
