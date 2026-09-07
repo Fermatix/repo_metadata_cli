@@ -79,9 +79,9 @@ _EXPECTED = {
     "untested_files_pct": 67, "merged_pr_count": 1,
     "clean_logical_loc": 130,
     "clean_handwritten_loc": 130, "autogen_in_clean_loc": 0,
-    "meta_logical_loc": 0, "meta_non_authored_loc": 0,
+    "meta_logical_loc": 0, "meta_generated_loc": 0,
     "meta_duplication_ratio": 0, "meta_non_merge_commit_count": 0,
-    "meta_loc_with_generated": 0,
+    "meta_logical_loc_excl_vendor": 0, "meta_non_authored_loc": 0,
 }
 
 assert set(_EXPECTED) == set(NEW_COLUMNS)
@@ -94,7 +94,7 @@ def _stable_external_metrics(monkeypatch):
     from repo_metadata_cli.metrics import external
 
     monkeypatch.setattr(external, "get_meta_logical_loc", lambda repo: 0)
-    monkeypatch.setattr(external, "get_meta_scc_with_generated_report", lambda repo: "")
+    monkeypatch.setattr(external, "get_meta_scc_excl_vendor_report", lambda repo: "")
     monkeypatch.setattr(external, "get_meta_duplication_ratio", lambda repo: 0.0)
     monkeypatch.setattr(external, "get_meta_non_merge_commit_count", lambda repo: 0)
 
@@ -147,6 +147,63 @@ def test_migrate_noop_on_current_schema(tmp_path):
     csv = tmp_path / "meta.csv"
     pd.DataFrame([{"repo_name": "a", **{c: 1 for c in NEW_COLUMNS}}]).to_csv(csv, index=False)
     assert migrate_csv_schema(csv) is False
+
+
+def test_migrate_legacy_meta_headers_and_values(tmp_path):
+    csv = tmp_path / "meta.csv"
+    pd.DataFrame(
+        [
+            {
+                "repo_name": "regular",
+                "meta_logical_loc": "100",
+                "meta_non_authored_loc": "5",
+                "meta_loc_with_generated": "80",
+            },
+            {
+                "repo_name": "excl-above-logical",
+                "meta_logical_loc": "100",
+                "meta_non_authored_loc": "7",
+                "meta_loc_with_generated": "110",
+            },
+            {
+                "repo_name": "clamped-to-logical",
+                "meta_logical_loc": "100",
+                "meta_non_authored_loc": "50",
+                "meta_loc_with_generated": "20",
+            },
+        ]
+    ).to_csv(csv, index=False)
+
+    assert migrate_csv_schema(csv) is True
+
+    df = pd.read_csv(csv, dtype=str, keep_default_na=False)
+    assert "meta_loc_with_generated" not in df.columns
+    assert list(df["meta_generated_loc"]) == ["5", "7", "50"]
+    assert list(df["meta_logical_loc_excl_vendor"]) == ["80", "110", "20"]
+    assert list(df["meta_non_authored_loc"]) == ["25", "7", "100"]
+    assert migrate_csv_schema(csv) is False
+
+
+@pytest.mark.parametrize("invalid", ["invalid", "1.5", "-1", "nan", "inf"])
+def test_migrate_legacy_meta_keeps_aggregate_blank_for_invalid_values(tmp_path, invalid):
+    csv = tmp_path / "meta.csv"
+    pd.DataFrame(
+        [
+            {
+                "repo_name": "alpha",
+                "meta_logical_loc": invalid,
+                "meta_non_authored_loc": "5",
+                "meta_loc_with_generated": "80",
+            }
+        ]
+    ).to_csv(csv, index=False)
+
+    assert migrate_csv_schema(csv) is True
+
+    row = pd.read_csv(csv, dtype=str, keep_default_na=False).iloc[0]
+    assert row["meta_generated_loc"] == "5"
+    assert row["meta_logical_loc_excl_vendor"] == "80"
+    assert row["meta_non_authored_loc"] == ""
 
 
 def test_migrate_noop_on_missing_file(tmp_path):

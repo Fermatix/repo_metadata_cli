@@ -45,11 +45,70 @@ NEW_COLUMNS: tuple = (
     "clean_handwritten_loc",
     "autogen_in_clean_loc",
     "meta_logical_loc",
-    "meta_non_authored_loc",
+    "meta_generated_loc",
     "meta_duplication_ratio",
     "meta_non_merge_commit_count",
-    "meta_loc_with_generated",
+    "meta_logical_loc_excl_vendor",
+    "meta_non_authored_loc",
 )
+
+_LEGACY_META_EXCL_VENDOR = "meta_loc_with_generated"
+
+
+def _integer_cell(value: object) -> Optional[int]:
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        parsed = int(text)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _derived_non_authored_loc(row: "pd.Series") -> str:
+    logical = _integer_cell(row.get("meta_logical_loc", ""))
+    excl_vendor = _integer_cell(row.get("meta_logical_loc_excl_vendor", ""))
+    generated = _integer_cell(row.get("meta_generated_loc", ""))
+    if logical is None or excl_vendor is None or generated is None:
+        return ""
+    return str(min(max(0, logical - excl_vendor) + generated, logical))
+
+
+def _migrate_legacy_meta_columns(df: pd.DataFrame) -> bool:
+    """Rename old LOC headers and derive the newly defined aggregate column."""
+    changed = False
+    old_schema = "meta_generated_loc" not in df.columns
+
+    if old_schema and "meta_non_authored_loc" in df.columns:
+        position = df.columns.get_loc("meta_non_authored_loc")
+        generated = df.pop("meta_non_authored_loc")
+        df.insert(position, "meta_generated_loc", generated)
+        changed = True
+
+    if _LEGACY_META_EXCL_VENDOR in df.columns:
+        if "meta_logical_loc_excl_vendor" not in df.columns:
+            df.rename(
+                columns={_LEGACY_META_EXCL_VENDOR: "meta_logical_loc_excl_vendor"},
+                inplace=True,
+            )
+        else:
+            blank = df["meta_logical_loc_excl_vendor"].astype(str).str.strip() == ""
+            df.loc[blank, "meta_logical_loc_excl_vendor"] = df.loc[
+                blank, _LEGACY_META_EXCL_VENDOR
+            ]
+            df.drop(columns=[_LEGACY_META_EXCL_VENDOR], inplace=True)
+        changed = True
+
+    if old_schema:
+        for column in ("meta_generated_loc", "meta_logical_loc_excl_vendor"):
+            if column not in df.columns:
+                df[column] = ""
+                changed = True
+        df["meta_non_authored_loc"] = df.apply(_derived_non_authored_loc, axis=1)
+        changed = True
+
+    return changed
 
 
 def _read_csv_preserving(csv_path: Path) -> pd.DataFrame:
@@ -82,16 +141,16 @@ def migrate_csv_schema(csv_path: Path) -> bool:
     df = _load_for_update(csv_path)
     if df is None:
         return False
+    changed = _migrate_legacy_meta_columns(df)
     missing = [c for c in NEW_COLUMNS if c not in df.columns]
-    if not missing:
+    if not missing and not changed:
         return False
     for column in missing:
         df[column] = ""
+    base_columns = [column for column in df.columns if column not in NEW_COLUMNS]
+    df = df[[*base_columns, *NEW_COLUMNS]]
     _atomic_write(df, csv_path)
-    logger.info(
-        "Migrated %s: appended %d new column(s): %s",
-        csv_path, len(missing), ", ".join(missing),
-    )
+    logger.info("Migrated %s to the current CSV schema.", csv_path)
     return True
 
 

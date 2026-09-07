@@ -34,7 +34,7 @@ def test_parse_meta_logical_loc_sums_language_code() -> None:
     assert external.parse_meta_logical_loc("not json") == 0
 
 
-def test_parse_meta_non_authored_loc_selects_generated_true() -> None:
+def test_parse_meta_generated_loc_selects_generated_true() -> None:
     output = """[
         {"Name": "Python", "Files": [
             {"Location": "generated.py", "Generated": true, "Code": 11},
@@ -45,11 +45,11 @@ def test_parse_meta_non_authored_loc_selects_generated_true() -> None:
             {"Location": "model.pb.go", "Generated": true, "Code": 13}
         ]}
     ]"""
-    assert external.parse_meta_non_authored_loc(output) == 24
-    assert external.parse_meta_non_authored_loc("{}") == 0
+    assert external.parse_meta_generated_loc(output) == 24
+    assert external.parse_meta_generated_loc("{}") == 0
 
 
-def test_parse_meta_loc_with_generated_sums_code_for_every_file() -> None:
+def test_parse_meta_logical_loc_excl_vendor_sums_code_for_every_file() -> None:
     output = """[
         {"Name": "Python", "Files": [
             {"Location": "generated.py", "Generated": true, "Code": 11},
@@ -60,8 +60,26 @@ def test_parse_meta_loc_with_generated_sums_code_for_every_file() -> None:
             {"Location": "bad.go", "Code": "unknown"}
         ]}
     ]"""
-    assert external.parse_meta_loc_with_generated(output) == 31
-    assert external.parse_meta_loc_with_generated("{}") == 0
+    assert external.parse_meta_logical_loc_excl_vendor(output) == 31
+    assert external.parse_meta_logical_loc_excl_vendor("{}") == 0
+
+
+@pytest.mark.parametrize(
+    ("logical", "excl_vendor", "generated", "expected"),
+    [
+        (100, 80, 5, 25),
+        (100, 110, 5, 5),
+        (100, 20, 50, 100),
+        (0, 10, 5, 0),
+    ],
+)
+def test_calculate_meta_non_authored_loc_clamps_result(
+    logical: int, excl_vendor: int, generated: int, expected: int
+) -> None:
+    assert (
+        external.calculate_meta_non_authored_loc(logical, excl_vendor, generated)
+        == expected
+    )
 
 
 def test_parse_meta_duplication_ratio_reads_total_percentage() -> None:
@@ -91,7 +109,7 @@ def test_meta_logical_loc_uses_exact_scc_command(monkeypatch, tmp_path: Path) ->
     assert calls == [(["scc", ".", "--format", "json"], tmp_path, "meta_logical_loc")]
 
 
-def test_meta_scc_with_generated_report_uses_exact_command(
+def test_meta_scc_excl_vendor_report_uses_exact_command(
     monkeypatch, tmp_path: Path
 ) -> None:
     calls = []
@@ -101,7 +119,7 @@ def test_meta_scc_with_generated_report_uses_exact_command(
         return '[{"Name":"Go","Files":[{"Generated":true,"Code":5}]}]'
 
     monkeypatch.setattr(external, "_run_stdout", fake_run)
-    assert "\"Code\":5" in external.get_meta_scc_with_generated_report(tmp_path)
+    assert "\"Code\":5" in external.get_meta_scc_excl_vendor_report(tmp_path)
     assert calls == [
         (
             [
@@ -115,12 +133,12 @@ def test_meta_scc_with_generated_report_uses_exact_command(
                 "json",
             ],
             tmp_path,
-            "meta_non_authored_loc/meta_loc_with_generated",
+            "meta_generated_loc/meta_logical_loc_excl_vendor",
         )
     ]
 
 
-def test_scc_with_generated_report_is_shared_by_both_metrics(
+def test_scc_excl_vendor_report_is_shared_by_all_loc_metrics(
     monkeypatch, tmp_path: Path
 ) -> None:
     calls = []
@@ -132,11 +150,13 @@ def test_scc_with_generated_report_is_shared_by_both_metrics(
             {"Generated":false,"Code":7}
         ]}]"""
 
-    monkeypatch.setattr(external, "get_meta_scc_with_generated_report", fake_report)
+    monkeypatch.setattr(external, "get_meta_scc_excl_vendor_report", fake_report)
     ctx = _CachedContext(tmp_path)
 
-    assert external.MetaNonAuthoredLocMetric().compute(ctx) == 5
-    assert external.MetaLocWithGeneratedMetric().compute(ctx) == 12
+    monkeypatch.setattr(external, "get_meta_logical_loc", lambda repo_path: 20)
+    assert external.MetaGeneratedLocMetric().compute(ctx) == 5
+    assert external.MetaLogicalLocExclVendorMetric().compute(ctx) == 12
+    assert external.MetaNonAuthoredLocMetric().compute(ctx) == 13
     assert calls == [tmp_path]
 
 

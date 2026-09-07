@@ -1,4 +1,4 @@
-"""Externally defined comparison metrics (columns BJ-BN)."""
+"""Externally defined comparison metrics (columns BJ-BO)."""
 
 from __future__ import annotations
 
@@ -90,7 +90,7 @@ def parse_meta_logical_loc(output: str) -> int:
     return total
 
 
-def parse_meta_non_authored_loc(output: str) -> int:
+def parse_meta_generated_loc(output: str) -> int:
     """Sum ``Files[].Code`` where scc marks ``Generated`` as JSON true."""
     total = 0
     for language in _parse_json_list(output):
@@ -110,7 +110,7 @@ def parse_meta_non_authored_loc(output: str) -> int:
     return total
 
 
-def parse_meta_loc_with_generated(output: str) -> int:
+def parse_meta_logical_loc_excl_vendor(output: str) -> int:
     """Sum ``Files[].Code`` for every file in the fixed scc report."""
     total = 0
     for language in _parse_json_list(output):
@@ -125,6 +125,18 @@ def parse_meta_loc_with_generated(output: str) -> int:
             except (TypeError, ValueError):
                 continue
     return total
+
+
+def calculate_meta_non_authored_loc(
+    logical_loc: int,
+    logical_loc_excl_vendor: int,
+    generated_loc: int,
+) -> int:
+    """Combine vendored-directory and generated-file LOC without double counting."""
+    return min(
+        max(0, logical_loc - logical_loc_excl_vendor) + generated_loc,
+        logical_loc,
+    )
 
 
 def parse_meta_duplication_ratio(output: str) -> float:
@@ -151,8 +163,8 @@ def get_meta_logical_loc(repo_path: Path) -> int:
     return parse_meta_logical_loc(output)
 
 
-def get_meta_scc_with_generated_report(repo_path: Path) -> str:
-    """Run the shared scc recipe for both generated-code comparison metrics."""
+def get_meta_scc_excl_vendor_report(repo_path: Path) -> str:
+    """Run the shared scc recipe for the vendor-excluded LOC metrics."""
     return _run_stdout(
         [
             "scc",
@@ -165,7 +177,7 @@ def get_meta_scc_with_generated_report(repo_path: Path) -> str:
             "json",
         ],
         repo_path,
-        "meta_non_authored_loc/meta_loc_with_generated",
+        "meta_generated_loc/meta_logical_loc_excl_vendor",
     )
 
 
@@ -224,19 +236,19 @@ class MetaLogicalLocMetric(BaseMetric):
         )
 
 
-class MetaNonAuthoredLocMetric(BaseMetric):
+class MetaGeneratedLocMetric(BaseMetric):
     """BK: scc-generated Code total from the fixed external recipe."""
 
     column = "BK"
-    field_name = "meta_non_authored_loc"
+    field_name = "meta_generated_loc"
 
     def compute(self, ctx: RepoContext) -> Any:
         return ctx._cached(
-            "meta_non_authored_loc",
-            lambda: parse_meta_non_authored_loc(
+            "meta_generated_loc",
+            lambda: parse_meta_generated_loc(
                 ctx._cached(
-                    "meta_scc_with_generated_report",
-                    lambda: get_meta_scc_with_generated_report(ctx.repo_path),
+                    "meta_scc_excl_vendor_report",
+                    lambda: get_meta_scc_excl_vendor_report(ctx.repo_path),
                 )
             ),
         )
@@ -270,19 +282,36 @@ class MetaNonMergeCommitCountMetric(BaseMetric):
         )
 
 
-class MetaLocWithGeneratedMetric(BaseMetric):
-    """BN: all Code from the fixed scc recipe, including generated files."""
+class MetaLogicalLocExclVendorMetric(BaseMetric):
+    """BN: all Code from the fixed scc recipe after vendor-directory exclusion."""
 
     column = "BN"
-    field_name = "meta_loc_with_generated"
+    field_name = "meta_logical_loc_excl_vendor"
 
     def compute(self, ctx: RepoContext) -> Any:
         return ctx._cached(
-            "meta_loc_with_generated",
-            lambda: parse_meta_loc_with_generated(
+            "meta_logical_loc_excl_vendor",
+            lambda: parse_meta_logical_loc_excl_vendor(
                 ctx._cached(
-                    "meta_scc_with_generated_report",
-                    lambda: get_meta_scc_with_generated_report(ctx.repo_path),
+                    "meta_scc_excl_vendor_report",
+                    lambda: get_meta_scc_excl_vendor_report(ctx.repo_path),
                 )
+            ),
+        )
+
+
+class MetaNonAuthoredLocMetric(BaseMetric):
+    """BO: vendored-directory LOC plus generated LOC, clamped to logical LOC."""
+
+    column = "BO"
+    field_name = "meta_non_authored_loc"
+
+    def compute(self, ctx: RepoContext) -> Any:
+        return ctx._cached(
+            "meta_non_authored_loc",
+            lambda: calculate_meta_non_authored_loc(
+                MetaLogicalLocMetric().compute(ctx),
+                MetaLogicalLocExclVendorMetric().compute(ctx),
+                MetaGeneratedLocMetric().compute(ctx),
             ),
         )
