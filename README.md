@@ -244,15 +244,16 @@ repo-metadata metadata repos.txt \
 | `clean_handwritten_loc` | из `clean_logical_loc` вычтен генерат, посчитанный по тому же набору файлов — рукописный код репозитория |
 | `autogen_in_clean_loc` | генерат внутри `clean_logical_loc`; `clean_logical_loc = clean_handwritten_loc + autogen_in_clean_loc` |
 
-Пять колонок нужны для сопоставления с результатами внешнего рецепта:
+Шесть колонок нужны для сопоставления с результатами внешнего рецепта:
 
 | Колонка | Команда | Значение |
 |---|---|---|
 | `meta_logical_loc` | `scc . --format json` | сумма `Code` по всем языкам; JSON добавлен вместо табличного вывода `scc .` |
-| `meta_non_authored_loc` | `scc . --gen --by-file --exclude-dir vendor,node_modules,dist,build,generated,migrations --format json` | сумма `Files[].Code` только для файлов с `Generated == true` |
+| `meta_generated_loc` | `scc . --gen --by-file --exclude-dir vendor,node_modules,dist,build,generated,migrations --format json` | сумма `Files[].Code` только для файлов с `Generated == true` |
 | `meta_duplication_ratio` | `jscpd . --min-tokens 50 --min-lines 5 --reporters json --output <временный каталог>` | `statistics.total.percentage / 100` |
 | `meta_non_merge_commit_count` | `git log --oneline --no-merges` с фильтром `grep -v -i revert \| wc -l` | число non-merge-коммитов по HEAD без строк с `revert` в любом регистре |
-| `meta_loc_with_generated` | `scc . --gen --by-file --exclude-dir vendor,node_modules,dist,build,generated,migrations` | сумма `Files[].Code` по всем файлам; реализация добавляет `--format json` и переиспользует запуск `meta_non_authored_loc` |
+| `meta_logical_loc_excl_vendor` | тот же прогон `scc --gen --by-file --exclude-dir …` | сумма `Files[].Code` по всем файлам после исключения `vendor,node_modules,dist,build,generated,migrations`; переиспользует запуск `meta_generated_loc` |
+| `meta_non_authored_loc` | вычисляется из трёх LOC-метрик | `min(max(0, meta_logical_loc − meta_logical_loc_excl_vendor) + meta_generated_loc, meta_logical_loc)` |
 
 Для Mercurial `meta_non_merge_commit_count` равен 0. `scc` и `jscpd` проверяются
 до старта расчёта, поэтому их отсутствие не приводит к нулевым метрикам: без
@@ -275,7 +276,7 @@ repo-metadata metadata repos.txt \
 
 **Про `clean_logical_loc`.** Уточнённый аналог `logical_loc`: та же конструкция (scc Code без вендорных каталогов, генерат внутри), но честнее про то, что считается кодом. Отличия: расширенный список исключаемых каталогов (`clean_scc_exclude_dirs` в TOML — плюс CMS-ядра вроде `bitrix`/`wp-includes`, закоммиченные копии библиотек, сборочные каталоги); из счёта убраны форматы данных и конфигурации (`clean_non_code_languages` — JSON, YAML, CSV, SVG, Markdown, Jupyter-JSON и т.п.), при этом ручная вёрстка (HTML, CSS и препроцессоры, шаблоны, XAML) остаётся кодом; XML считается кодом только на Android-путях (`res/**`, `AndroidManifest.xml`); SQL считается кодом, кроме файлов-дампов БД (баннер дамп-утилиты, массовые `INSERT`/`COPY`, аномальная форма файла). `logical_loc` при этом считается по-старому — для сопоставимости с ранее собранными данными.
 
-**Миграция старого CSV.** Если указать `--output-csv` с файлом от предыдущей версии утилиты (без этих хвостовых колонок), утилита сама допишет колонки в конец схемы и при том же запуске пересчитает их для репозиториев, которые есть и в CSV, и во входных данных, — без дублей строк, с сохранением всех прежних колонок и значений. Строки, исходные репозитории которых в текущем запуске отсутствуют, остаются без изменений (новые поля пустые, в лог пишется предупреждение).
+**Миграция старого CSV.** Если указать `--output-csv` с файлом от предыдущей версии утилиты, утилита сама обновит хвост схемы. В файле без `meta_generated_loc` прежняя колонка `meta_non_authored_loc` считается generated-only и переезжает в `meta_generated_loc`; `meta_loc_with_generated` переименовывается в `meta_logical_loc_excl_vendor`, а итоговый `meta_non_authored_loc` сразу вычисляется из сохранённых значений по формуле выше. Остальные отсутствующие колонки дописываются, а строки с пустыми новыми ячейками пересчитываются для доступных во входных данных репозиториев — без дублей и без потери неизвестных колонок. Строки без исходного репозитория сохраняются; недоступные для расчёта значения остаются пустыми и получают предупреждение в логе.
 
 Подробные формулы: `docs/metrics/pr_size_distribution.md`, `docs/metrics/test_coverage_pct.md`, `docs/metrics/ast_symbol_counts.md`.
 

@@ -21,8 +21,9 @@ from .docs import (
 )
 from .external import (
     MetaDuplicationRatioMetric,
-    MetaLocWithGeneratedMetric,
+    MetaGeneratedLocMetric,
     MetaLogicalLocMetric,
+    MetaLogicalLocExclVendorMetric,
     MetaNonAuthoredLocMetric,
     MetaNonMergeCommitCountMetric,
 )
@@ -139,10 +140,11 @@ __all__ = [
     "CleanLogicalLocMetric",
     "CleanHandwrittenLocMetric",
     "AutogenInCleanLocMetric",
-    # externally defined comparison metrics (BJ-BN)
+    # externally defined comparison metrics (BJ-BO)
     "MetaLogicalLocMetric",
-    "MetaNonAuthoredLocMetric",
+    "MetaGeneratedLocMetric",
     "MetaDuplicationRatioMetric",
     "MetaNonMergeCommitCountMetric",
-    "MetaLocWithGeneratedMetric",
+    "MetaLogicalLocExclVendorMetric",
+    "MetaNonAuthoredLocMetric",
 ]
