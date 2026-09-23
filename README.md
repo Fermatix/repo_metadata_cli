@@ -2,12 +2,7 @@
 
 Collect repository metadata locally and export one CSV row per repository.
 
-## Required: Quickstart
-
-Read these four steps to collect and check your metadata. Everything after the
-**Optional reference** divider is for additional inputs, settings and metric definitions.
-
-### 1. Install dependencies
+## Installation
 
 Use macOS or Linux. Git, `scc` (line counts) and `jscpd` (duplication) are required.
 The Python package supports Python 3.10+; the commands below use Python 3.12,
@@ -42,15 +37,12 @@ export PATH="$HOME/.local/bin:$PATH"
 git clone https://github.com/Fermatix/repo_metadata_cli.git
 cd repo_metadata_cli
 uv sync --locked --python 3.12
-git --version
-scc --version
-jscpd --version
 ```
 
 Run subsequent commands from this directory so they can find
 `repo_metadata.toml`. `uv run` uses the project environment; activation is unnecessary.
 
-### 2. Prepare the repository list
+## Quickstart
 
 Create `repos.txt` with one Git SSH URL per line. This Quickstart assumes your SSH
 key is configured and has read access to the repositories:
@@ -64,47 +56,17 @@ git@git.example.com:group/mobile-app.git
 
 Replace the examples with your repositories and end the last line with a newline.
 
-### 3. Run collection
-
-Choose a new run directory for each batch or fresh recalculation:
-
 ```bash
-mkdir -p runs/first
-uv run repo-metadata metadata repos.txt \
-  --output-csv runs/first/metadata.csv \
-  --bundles-dir runs/first/bundles \
-  --mirrors-dir runs/first/mirrors \
-  --ok-file runs/first/fetched.txt \
-  > runs/first/run.log 2>&1
+uv run repo-metadata metadata repos.txt
 ```
 
-This creates local mirrors and bundles, measures the repositories and writes the
-CSV. Git code metrics use the branch with the most recent commit, which can differ
-from the default branch.
-
-### 4. Check and collect the result
-
-The result is **`runs/first/metadata.csv`**. Share or import that file after checking:
-
-- Every intended repository has exactly one row; check `repo_url`, `repo_org` and
-  `repo_name` for missing repositories or duplicates.
-- `runs/first/run.log` contains no unresolved fetch, clone or metric errors.
-- Unexpected zero LOC, history or duplication values have been investigated.
-
-A successful exit alone does not prove that every listed repository was fetched.
-`fetched.txt` records newly fetched repositories, not completion of CSV generation.
-No data is uploaded unless you explicitly add `--upload`.
-
-Rerun the same command to resume an interrupted batch. Existing bundles and
-completed CSV rows are reused. To measure updated source code or use different
-settings, use a new run directory; resume does not refresh completed rows.
+The result is **`repo_metadata.csv`**. Check that it contains one row per intended
+repository and that the command reported no fetch or metric errors before sharing
+or importing it. Nothing is uploaded by default.
 
 ---
 
 ## Optional reference
-
-The collection workflow above is complete. Read the following sections only when
-you need another input format, API enrichment, upload or metric details.
 
 ### Access and PR data
 
@@ -123,7 +85,7 @@ Use `GITHUB_TOKEN` for GitHub HTTPS access and PR data,
 with access to the repositories being measured.
 
 To add API-derived PR/MR counts, set the appropriate token in your environment
-and add `--pr-cache runs/first/pr_cache.json` to the collection command. For a
+and add `--pr-cache pr_cache.json` to the collection command. For a
 self-hosted GitLab, also add:
 
 ```text
@@ -141,8 +103,8 @@ hosting URLs, then pass `--pr-cache` to `metadata`:
 
 ```bash
 uv run repo-metadata enrich-prs hosting-repos.txt \
-  --bundles-dir runs/first/bundles \
-  --cache-file runs/first/pr_cache.json
+  --bundles-dir tmp/bundles \
+  --cache-file pr_cache.json
 ```
 
 Add the same `--gitlab-base-url` here for a self-hosted instance. Cache keys must
@@ -185,7 +147,7 @@ discard uncommitted changes. Use the `.txt` workflow for working clones.
 
 Mercurial accepts `hg+` URLs/paths or an `*.hgbundle`, and can be mixed with Git
 inputs. For Mercurial, include `mercurial` in the `brew install` or
-`apt-get install` command from step 1.
+`apt-get install` command in [Installation](#installation).
 `meta_non_merge_commit_count` is Git-only and is 0 for Mercurial.
 
 ### Metrics
@@ -231,10 +193,29 @@ settings or `--exclude-dir`. Commands run in the measured working tree:
 | `meta_duplication_ratio` | `jscpd . --min-tokens 50 --min-lines 5 --reporters json --output <temporary-directory>`: `statistics.total.percentage / 100`. |
 | `meta_non_merge_commit_count` | Count lines from `git log --oneline --no-merges` on the measured HEAD, excluding lines containing `revert` case-insensitively. |
 
-External-tool failures can produce zero values with warnings. Review the run log
+External-tool failures can produce zero values with warnings. Review the command output
 before interpreting zero as a measured absence of code, duplication or history.
 
 ### Configuration and resume
+
+The default command creates mirrors in `tmp/mirrors`, bundles in `tmp/bundles`,
+and a fetch record at `tmp/fetched_repos.txt`. That record tracks fetching, not
+CSV completion. A successful exit alone does not prove every source was fetched.
+Git metrics use the branch with the most recent commit, which may differ from the
+default branch.
+
+Rerun the same command to resume an interrupted batch. Existing bundles and
+completed CSV rows are reused. For a new batch, changed settings or refreshed
+source code, choose fresh paths; resume does not refresh completed rows:
+
+```bash
+mkdir -p runs/next
+uv run repo-metadata metadata repos.txt \
+  --output-csv runs/next/metadata.csv \
+  --bundles-dir runs/next/bundles \
+  --mirrors-dir runs/next/mirrors \
+  --ok-file runs/next/fetched.txt
+```
 
 The default configuration is [repo_metadata.toml](repo_metadata.toml). Use
 `--config-file /path/to/repo_metadata.toml` when running from another directory.
@@ -275,7 +256,7 @@ before importing it through your usual workflow.
 | Symptom | Action |
 |---|---|
 | `repo-metadata` not found | Run it as `uv run repo-metadata` from the cloned project. |
-| Missing `scc` or `jscpd` | Install the missing tool using step 1; collection stops before fetching. `--allow-missing-jscpd` explicitly permits zeroed duplication fields and is unsuitable for a complete collection. |
+| Missing `scc` or `jscpd` | Follow [Installation](#installation); collection stops before fetching. `--allow-missing-jscpd` explicitly permits zeroed duplication fields and is unsuitable for a complete collection. |
 | Missing `extension_language_map` | Run from the project directory or pass `--config-file` pointing to its TOML. |
 | Fetch/authentication errors | Check the URL, token or SSH access. Check the CSV against the entire input list, even after exit code 0. |
 | Zero PR/review counts | Check token access, `--pr-cache` and the GitLab API base URL. Filesystem paths alone cannot supply API counts. |
