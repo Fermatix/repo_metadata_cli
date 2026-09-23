@@ -52,20 +52,22 @@ Run subsequent commands from this directory so they can find
 
 ### 2. Prepare the repository list
 
-Create `repos.txt` with one absolute path to a local Git repository per line.
-Replace these example paths with your own:
+Create `repos.txt` with one Git SSH or HTTPS URL per line:
 
 ```text
-/absolute/path/to/project-a
-/absolute/path/to/project-b
+# Blank lines and lines starting with # are ignored
+
+git@git.example.com:group/service-api.git
+https://github.com/example-org/mobile-app.git
+
+# Without an SSH key, include your username and token in the HTTPS URL
+https://username:TOKEN@git.example.com/group/legacy-service.git
 ```
 
-Blank lines and lines starting with `#` are ignored. End the last line with a
-newline. Use clones with the branches and history you want measured; fetching
-from a local path cannot recover history that the clone does not contain.
+Replace the examples with your repositories and end the last line with a newline.
 
-Repository URLs also work. For private URLs or PR/MR data from a hosting API,
-see [Access and PR data](#access-and-pr-data).
+For token environment variables or PR/MR data from a hosting API, see
+[Access and PR data](#access-and-pr-data).
 
 ### 3. Run collection
 
@@ -83,8 +85,7 @@ uv run repo-metadata metadata repos.txt \
 
 This creates local mirrors and bundles, measures the repositories and writes the
 CSV. Git code metrics use the branch with the most recent commit, which can differ
-from the default branch. The input clones are not checked out or modified by this
-list-based workflow.
+from the default branch.
 
 ### 4. Check and collect the result
 
@@ -112,17 +113,10 @@ you need another input format, API enrichment, upload or metric details.
 
 ### Access and PR data
 
-`repos.txt` can contain HTTPS or SSH URLs, for example:
-
-```text
-https://git.example.com/group/project-a.git
-git@git.example.com:group/project-b.git
-```
-
-Use `GITLAB_TOKEN` for GitLab HTTPS access (`read_repository` for fetching and
-`read_api` for MR data). Use `GITHUB_TOKEN` for GitHub HTTPS access and PR data,
+For HTTPS URLs without embedded credentials, use `GITLAB_TOKEN` for GitLab access
+(`read_repository` for fetching and `read_api` for MR data).
+Use `GITHUB_TOKEN` for GitHub HTTPS access and PR data,
 with access to the repositories being measured. SSH URLs use your SSH setup.
-Keep credentials out of `repos.txt`.
 
 To add API-derived PR/MR counts, set the appropriate token in your environment
 and add `--pr-cache runs/first/pr_cache.json` to the collection command. For a
@@ -153,6 +147,20 @@ and output CSV when you need refreshed counts.
 
 ### Other inputs
 
+Local Git paths and Mercurial sources can also be listed in `repos.txt`:
+
+```text
+/home/user/repos/internal-tool
+
+# Mercurial: use the hg+ prefix
+hg+/home/user/repos/legacy-billing
+hg+https://hg.example.org/old-project
+```
+
+For local Git paths, use clones containing the branches and history you want
+measured. The list-based workflow reads these clones without checking them out
+or changing their files.
+
 | Input passed to `metadata` | Behavior |
 |---|---|
 | `.txt` file | Fetch the listed repositories into mirrors and bundles, then measure the bundles directory. |
@@ -171,10 +179,9 @@ containing `project-a/` and `project-b/`. Without history, commit and PR metrics
 directory mode force-checks out the latest-commit branch **in place**, which can
 discard uncommitted changes. Use the `.txt` workflow for working clones.
 
-Mercurial is also supported: use `hg+https://hg.example.com/project-a` or an
-`*.hgbundle`. For local Mercurial paths, use an explicit `hg+` prefix. Install `hg`
-with your package manager, or add `--install-hg` to `metadata`. Git and Mercurial
-inputs can be mixed. `hg` is required only when the input contains Mercurial;
+Mercurial accepts `hg+` URLs/paths or an `*.hgbundle`, and can be mixed with Git
+inputs. For Mercurial, include `mercurial` in the `brew install` or
+`apt-get install` command from step 1.
 `meta_non_merge_commit_count` is Git-only and is 0 for Mercurial.
 
 ### Metrics
