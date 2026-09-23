@@ -28,10 +28,13 @@ sudo apt-get install -y git curl nodejs npm
 curl -LsSf https://astral.sh/uv/install.sh | sh
 . "$HOME/.local/bin/env"
 npm install --global --prefix "$HOME/.local" jscpd
+mkdir -p "$HOME/.local/bin"
+scc_arch="$(uname -m)"
+case "$scc_arch" in aarch64) scc_arch=arm64 ;; esac
+curl -fL "https://github.com/boyter/scc/releases/latest/download/scc_Linux_${scc_arch}.tar.gz" \
+  | tar -xz -C "$HOME/.local/bin" scc
 export PATH="$HOME/.local/bin:$PATH"
 ```
-
-On Linux, `--install-scc` in step 3 installs `scc` if it is missing.
 
 **Then, on either platform**:
 
@@ -40,6 +43,7 @@ git clone https://github.com/Fermatix/repo_metadata_cli.git
 cd repo_metadata_cli
 uv sync --locked --python 3.12
 git --version
+scc --version
 jscpd --version
 ```
 
@@ -70,7 +74,6 @@ Choose a new run directory for each batch or fresh recalculation:
 ```bash
 mkdir -p runs/first
 uv run repo-metadata metadata repos.txt \
-  --install-scc \
   --output-csv runs/first/metadata.csv \
   --bundles-dir runs/first/bundles \
   --mirrors-dir runs/first/mirrors \
@@ -259,7 +262,7 @@ before importing it through your usual workflow.
 | Symptom | Action |
 |---|---|
 | `repo-metadata` not found | Run it as `uv run repo-metadata` from the cloned project. |
-| Missing `scc` or `jscpd` | Install the missing tool; collection stops before fetching. `--install-scc` can install `scc`. `--allow-missing-jscpd` explicitly permits zeroed duplication fields and is unsuitable for a complete collection. |
+| Missing `scc` or `jscpd` | Install the missing tool using step 1; collection stops before fetching. `--allow-missing-jscpd` explicitly permits zeroed duplication fields and is unsuitable for a complete collection. |
 | Missing `extension_language_map` | Run from the project directory or pass `--config-file` pointing to its TOML. |
 | Fetch/authentication errors | Check the URL, token or SSH access. Check the CSV against the entire input list, even after exit code 0. |
 | Zero PR/review counts | Check token access, `--pr-cache` and the GitLab API base URL. Filesystem paths alone cannot supply API counts. |
