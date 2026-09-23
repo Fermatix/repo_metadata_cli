@@ -1,334 +1,289 @@
-# Инструкция по сбору метаданных репозиториев
+# Repository Metadata CLI
 
-Эта утилита предназначена для партнёров Fermatix, которые собирают метаданные репозиториев на своей стороне и передают только результирующий CSV-файл.
+Collect repository metadata locally and export one CSV row per repository.
 
----
+## Required: Quickstart
 
-## Системные требования
+Read these four steps to collect and check your metadata. Everything after the
+**Optional reference** divider is for additional inputs, settings and metric definitions.
 
-- macOS или Linux
-- Python 3.10 или новее
-- Git (обычно уже установлен)
-- Доступ в интернет (для установки зависимостей и вызова API)
+### 1. Install dependencies
 
----
+Use macOS or Linux. Git, `scc` (line counts) and `jscpd` (duplication) are required.
+The Python package supports Python 3.10+; the commands below use Python 3.12,
+which `uv` installs if needed.
 
-## Шаг 1. Установка вспомогательных инструментов
-
-### macOS
+**macOS**, with [Homebrew](https://brew.sh/) installed:
 
 ```bash
-# Homebrew (если не установлен)
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# uv — менеджер Python-зависимостей
-brew install uv
-
-# scc — подсчёт строк кода
-brew install scc
-
-# jscpd — поиск дублирования кода (требует Node.js)
-npm install -g jscpd
+brew install git uv scc node
+npm install --global jscpd
 ```
 
-### Linux (Ubuntu / Debian)
+**Ubuntu / Debian**:
 
 ```bash
-# uv
-curl -Lsf https://astral.sh/uv/install.sh | bash
-
-# scc
-curl -L https://github.com/boyter/scc/releases/latest/download/scc_Linux_x86_64.tar.gz | tar xz
-sudo mv scc /usr/local/bin/
-
-# jscpd (требует Node.js)
-npm install -g jscpd
+sudo apt-get update
+sudo apt-get install -y git curl nodejs npm
+curl -LsSf https://astral.sh/uv/install.sh | sh
+. "$HOME/.local/bin/env"
+npm install --global --prefix "$HOME/.local" jscpd
+mkdir -p "$HOME/.local/bin"
+scc_arch="$(uname -m)"
+case "$scc_arch" in aarch64) scc_arch=arm64 ;; esac
+curl -fL "https://github.com/boyter/scc/releases/latest/download/scc_Linux_${scc_arch}.tar.gz" \
+  | tar -xz -C "$HOME/.local/bin" scc
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
-> **Примечание про scc.** Без установленного scc команда `repo-metadata metadata`
-> не запустится и напечатает инструкцию. Можно не ставить его вручную, а добавить
-> к команде запуска флаг `--install-scc` — утилита сама скачает официальный релиз
-> scc и установит его в окружение.
-
-> **Примечание про jscpd.** Без установленного jscpd команда `repo-metadata metadata`
-> тоже не запустится: обе колонки дупликации (`duplication_ratio`,
-> `meta_duplication_ratio`) ушли бы нулями, неотличимыми от репозитория без
-> дублей. Если дупликация не нужна, добавьте флаг `--allow-missing-jscpd` —
-> расчёт пойдёт с нулевыми колонками осознанно.
-
----
-
-## Шаг 2. Установка утилиты
+**Then, on either platform**:
 
 ```bash
-# Скачать репозиторий утилиты
-git clone <URL репозитория утилиты>
+git clone https://github.com/Fermatix/repo_metadata_cli.git
 cd repo_metadata_cli
-
-# Создать виртуальное окружение и установить зависимости
-uv venv --seed -p 3.11
-source .venv/bin/activate
-uv sync
+uv sync --locked --python 3.12
+git --version
+scc --version
+jscpd --version
 ```
 
----
+Run subsequent commands from this directory so they can find
+`repo_metadata.toml`. `uv run` uses the project environment; activation is unnecessary.
 
-## Шаг 3. Подготовка списка репозиториев
+### 2. Prepare the repository list
 
-Создайте файл `repos.txt` — один URL репозитория на строку:
+Create `repos.txt` with one Git SSH URL per line. This Quickstart assumes your SSH
+key is configured and has read access to the repositories:
 
-```
-https://gitlab.com/your-company/repo-one.git
-https://gitlab.com/your-company/repo-two.git
-https://github.com/your-org/repo-three.git
-https://git.your-company.ru/your-company/repo-four.git
-```
+```text
+# Blank lines and lines starting with # are ignored
 
-Поддерживаются репозитории на GitLab.com, GitHub.com, а также на корпоративных GitLab-инстансах с произвольным доменом.
-
-Строки, начинающиеся с `#`, игнорируются (можно использовать для комментариев).
-
-### Поддержка Mercurial (hg)
-
-Помимо Git, утилита умеет обрабатывать репозитории Mercurial. Система контроля версий определяется **автоматически по ссылке**:
-
-- известные hg-хосты (`hg.mozilla.org`, `*.heptapod.net`, `mercurial-scm.org` и т.п.) распознаются как Mercurial;
-- любую ссылку можно явно пометить префиксом схемы: `hg+<url>` — Mercurial, `git+<url>` — Git (приоритетнее автоопределения);
-- всё остальное (GitHub/GitLab и пр.) обрабатывается как Git — поведение для git-репозиториев не меняется.
-
-```
-# Git (как и раньше)
-https://github.com/your-org/repo-one.git
-# Mercurial по известному хосту
-https://foss.heptapod.net/your-group/repo-two
-# Явный префикс схемы
-hg+https://hg.example.org/repo-three
+git@git.example.com:group/service-api.git
+git@git.example.com:group/mobile-app.git
 ```
 
-Для работы с Mercurial нужна установленная команда `hg`:
+Replace the examples with your repositories and end the last line with a newline.
+
+### 3. Run collection
+
+Choose a new run directory for each batch or fresh recalculation:
 
 ```bash
-uv pip install mercurial   # или: pip install mercurial
+mkdir -p runs/first
+uv run repo-metadata metadata repos.txt \
+  --output-csv runs/first/metadata.csv \
+  --bundles-dir runs/first/bundles \
+  --mirrors-dir runs/first/mirrors \
+  --ok-file runs/first/fetched.txt \
+  > runs/first/run.log 2>&1
 ```
 
-Если во входных данных есть Mercurial-репозитории, а `hg` не установлен, команда
-`repo-metadata metadata` не запустится и напечатает инструкцию: без `hg` все метрики
-истории (коммиты, авторы, ветки, дата создания, PR и их размеры, хэши) молча
-получились бы нулевыми. Можно не ставить вручную, а добавить флаг `--install-hg` —
-утилита установит Mercurial в текущее окружение. Прогоны без hg-репозиториев эта
-проверка не затрагивает. Git-бандлы сохраняются как `*.bundle`, Mercurial-бандлы — как `*.hgbundle` (оба автоматически подхватываются на этапе расчёта метрик).
+This creates local mirrors and bundles, measures the repositories and writes the
+CSV. Git code metrics use the branch with the most recent commit, which can differ
+from the default branch.
+
+### 4. Check and collect the result
+
+The result is **`runs/first/metadata.csv`**. Share or import that file after checking:
+
+- Every intended repository has exactly one row; check `repo_url`, `repo_org` and
+  `repo_name` for missing repositories or duplicates.
+- `runs/first/run.log` contains no unresolved fetch, clone or metric errors.
+- Unexpected zero LOC, history or duplication values have been investigated.
+
+A successful exit alone does not prove that every listed repository was fetched.
+`fetched.txt` records newly fetched repositories, not completion of CSV generation.
+No data is uploaded unless you explicitly add `--upload`.
+
+Rerun the same command to resume an interrupted batch. Existing bundles and
+completed CSV rows are reused. To measure updated source code or use different
+settings, use a new run directory; resume does not refresh completed rows.
 
 ---
 
-### Исключение лишних каталогов из подсчёта
+## Optional reference
 
-Иногда в репозитории лежит крупный чужой блок, который не нужно ни считать, ни
-тратить на него время: ядро CMS, копия чужой библиотеки, бэкап. Такие пути можно
-исключить прямо в команде, флаг повторяемый:
+The collection workflow above is complete. Read the following sections only when
+you need another input format, API enrichment, upload or metric details.
+
+### Access and PR data
+
+HTTPS URLs are an optional alternative in `repos.txt`:
+
+```text
+https://github.com/example-org/mobile-app.git
+
+# Without an SSH key, include your username and token in the HTTPS URL
+https://username:TOKEN@git.example.com/group/legacy-service.git
+```
+
+For HTTPS URLs without embedded credentials, use `GITLAB_TOKEN` for GitLab access
+(`read_repository` for fetching and `read_api` for MR data).
+Use `GITHUB_TOKEN` for GitHub HTTPS access and PR data,
+with access to the repositories being measured.
+
+To add API-derived PR/MR counts, set the appropriate token in your environment
+and add `--pr-cache runs/first/pr_cache.json` to the collection command. For a
+self-hosted GitLab, also add:
+
+```text
+--gitlab-base-url https://git.example.com/api/v4
+```
+
+Automatic enrichment needs **both a `.txt` input and `--pr-cache` plus a token**.
+A local filesystem path does not identify a hosting project for enrichment; use
+hosting URLs when collecting API data. Without a usable API cache,
+`total_pr_count` and `merged_pr_count` fall back to merge/squash fingerprints in
+history, while `reviewed_pr_count` is 0.
+
+For an existing bundle collection, prepare a cache separately using the original
+hosting URLs, then pass `--pr-cache` to `metadata`:
 
 ```bash
-repo-metadata metadata ./repos \
-  --exclude-dir bitrix/modules \
-  --exclude-dir bitrix/js \
-  --output-csv repo_metadata.csv
+uv run repo-metadata enrich-prs hosting-repos.txt \
+  --bundles-dir runs/first/bundles \
+  --cache-file runs/first/pr_cache.json
 ```
 
-Правила совпадения такие же, как у `scc`: голое имя (`vendor`) совпадает с
-каталогом на любой глубине, путь из нескольких сегментов (`bitrix/modules`) —
-с этими сегментами подряд, тоже на любой глубине. Так исключение срабатывает и
-когда установка лежит не в корне (например, в `www/`), и на бэкапных копиях.
-Регистр учитывается: `Plugins` и `plugins` — разные каталоги.
+Add the same `--gitlab-base-url` here for a self-hosted instance. Cache keys must
+match bundle filenames. Existing nonzero entries may be reused; use a new cache
+and output CSV when you need refreshed counts.
 
-Исключение действует на основные метрики кода: `logical_loc`, `clean_logical_loc`,
-языковые доли и расширения, `symbols_count`, счётчики функций и классов,
-оценки по тестам. `raw_loc` по своему определению продолжает считать всё дерево
-целиком. Метрики `meta_*` считаются по фиксированным внешним командам ниже:
-`--exclude-dir` и настройки TOML их не меняют.
+### Other inputs
 
-> ⚠️ Прогон с этим флагом даёт **несопоставимые** значения `logical_loc` с
-> обычным прогоном. Используйте его для разовых случаев и обязательно сообщайте,
-> какие каталоги были исключены, когда передаёте CSV.
+Local Git paths and Mercurial sources can also be listed in `repos.txt`:
 
----
+```text
+/home/user/repos/internal-tool
 
-## Альтернатива: локальные директории без системы контроля версий
-
-Если ваши репозитории не хранятся в git, а доступны только как обычные папки с файлами — передайте родительскую директорию напрямую.
-
-**Структура директорий:**
-```
-/data/my_repos/
-  ├── project_alpha/      ← один репозиторий
-  │   ├── src/
-  │   └── README.md
-  └── project_beta/       ← ещё один репозиторий
-      └── main.py
+# Mercurial: use the hg+ prefix
+hg+/home/user/repos/legacy-billing
+hg+https://hg.example.org/old-project
 ```
 
-**Команда запуска** (токены GitLab/GitHub не нужны):
-```bash
-repo-metadata metadata /data/my_repos \
-  --output-csv repo_metadata.csv
-```
+For local Git paths, use clones containing the branches and history you want
+measured. The list-based workflow reads these clones without checking them out
+or changing their files.
 
-Утилита автоматически определит режим: если в директории нет `*.bundle`-файлов, каждая вложенная поддиректория обрабатывается как отдельный репозиторий.
-
-> **Примечание.** Метрики `commit_count`, `contributors_count`, `total_pr_count`, `reviewed_pr_count`, а также PR-метрики (`pr_simple_pct`, `pr_standard_pct`, `pr_rich_pct`, `avg_loc_per_pr`) будут равны 0 — git-история отсутствует. Все остальные метрики (LOC, языки, тесты, CI, документация, `test_coverage_pct` и др.) рассчитываются в полном объёме: список файлов в этом режиме берётся обходом директории.
-
----
-
-## Шаг 4. Получение токенов доступа
-
-**GitLab:** (Если ваши репозитории хранятся на GitLab.com или корпоративном GitLab)
-1. Откройте GitLab → User Settings → Access Tokens
-2. Создайте токен с правом `read_repository` и `read_api`
-3. Скопируйте значение токена
-
-**GitHub:** (Если ваши репозитории хранятся на GitHub)
-1. Откройте GitHub → Settings → Developer settings → Personal access tokens
-2. Создайте токен с правом `repo` (read)
-3. Скопируйте значение токена
-
----
-
-## Шаг 5. Запуск
-
-Выполните одну команду — она загрузит репозитории, соберёт PR-статистику и сформирует CSV:
-
-```bash
-repo-metadata metadata repos.txt \
-  --gitlab-token ВАШ_GITLAB_TOKEN \
-  --pr-cache pr_cache.json \
-  --output-csv repo_metadata.csv
-```
-
-Замените:
-- `ВАШ_GITLAB_TOKEN` — токен из шага 4 (для GitHub используйте `--github-token`)
-- Если репозитории публичные, токен можно не указывать
-
-**Если ваши репозитории хранятся на корпоративном GitLab** (не на gitlab.com), добавьте параметр `--gitlab-base-url` с адресом API вашего инстанса:
-
-```bash
-repo-metadata metadata repos.txt \
-  --gitlab-token ВАШ_GITLAB_TOKEN \
-  --gitlab-base-url https://git.your-company.ru/api/v4 \
-  --pr-cache pr_cache.json \
-  --output-csv repo_metadata.csv
-```
-
-Адрес API строится по шаблону: `https://ВАШ_ДОМЕН/api/v4`.
-
-**Примерное время выполнения:** 2–5 минут на репозиторий в зависимости от его размера.
-
-Прогресс отображается в терминале. Если процесс прервать и запустить снова — уже обработанные репозитории будут пропущены.
-
----
-
-## Метрики PR и оценка тестового кода
-
-Каждый запуск `repo-metadata metadata` добавляет в CSV хвостовые колонки
-(отдельный флаг не нужен, сетевые вызовы в расчёте не участвуют):
-
-| Колонка | Что это |
+| Input passed to `metadata` | Behavior |
 |---|---|
-| `pr_simple_pct` | % PR размером до 50 изменённых строк включительно |
-| `pr_standard_pct` | % PR размером 51–300 изменённых строк |
-| `pr_rich_pct` | % PR размером больше 300 изменённых строк |
-| `avg_loc_per_pr` | средний размер PR в изменённых строках, округлённый до целого |
-| `test_coverage_pct` | статическая оценка доли тестового кода, % (0–100) |
-| `functions_count` | число определений функций/методов (tree-sitter, без вендорных каталогов) |
-| `classes_count` | число объявлений классов/интерфейсов/трейтов и аналогов (tree-sitter) |
-| `untested_files_pct` | % кодовых файлов, не являющихся тест-файлами (0–100) |
-| `merged_pr_count` | число смерженных MR/PR (API или git-отпечатки); `total_pr_count` (P) при этом — все состояния из API, либо равен merged |
-| `clean_logical_loc` | строки кода только код-языков, с расширенным списком исключаемых каталогов (см. ниже) |
-| `clean_handwritten_loc` | из `clean_logical_loc` вычтен генерат, посчитанный по тому же набору файлов — рукописный код репозитория |
-| `autogen_in_clean_loc` | генерат внутри `clean_logical_loc`; `clean_logical_loc = clean_handwritten_loc + autogen_in_clean_loc` |
+| `.txt` file | Fetch the listed repositories into mirrors and bundles, then measure the bundles directory. |
+| Directory containing `*.bundle` or `*.hgbundle` | Find bundles recursively and measure them. Other directories are not treated as separate repositories. |
+| Directory without bundles | Treat each immediate, non-hidden subdirectory as one repository. Plain source folders work without VCS history. |
 
-Шесть колонок нужны для сопоставления с результатами внешнего рецепта:
-
-| Колонка | Команда | Значение |
-|---|---|---|
-| `meta_logical_loc` | `scc . --format json` | сумма `Code` по всем языкам; JSON добавлен вместо табличного вывода `scc .` |
-| `meta_generated_loc` | `scc . --gen --by-file --exclude-dir vendor,node_modules,dist,build,generated,migrations --format json` | сумма `Files[].Code` только для файлов с `Generated == true` |
-| `meta_duplication_ratio` | `jscpd . --min-tokens 50 --min-lines 5 --reporters json --output <временный каталог>` | `statistics.total.percentage / 100` |
-| `meta_non_merge_commit_count` | `git log --oneline --no-merges` с фильтром `grep -v -i revert \| wc -l` | число non-merge-коммитов по HEAD без строк с `revert` в любом регистре |
-| `meta_logical_loc_excl_vendor` | тот же прогон `scc --gen --by-file --exclude-dir …` | сумма `Files[].Code` по всем файлам после исключения `vendor,node_modules,dist,build,generated,migrations`; переиспользует запуск `meta_generated_loc` |
-| `meta_non_authored_loc` | вычисляется из трёх LOC-метрик | `min(max(0, meta_logical_loc − meta_logical_loc_excl_vendor) + meta_generated_loc, meta_logical_loc)` |
-
-Для Mercurial `meta_non_merge_commit_count` равен 0. `scc` и `jscpd` проверяются
-до старта расчёта, поэтому их отсутствие не приводит к нулевым метрикам: без
-первого запуск невозможен, без второго нужен явный `--allow-missing-jscpd`.
-Если `git` недоступен либо команда завершается с ошибкой, соответствующая
-метрика равна 0, в лог пишется предупреждение. Существующие `logical_loc`, `autogen_loc`,
-`duplication_ratio` и `commit_count` не меняются.
-
-**Как считаются PR-метрики.** Размер PR = добавленные + удалённые строки. Сначала в истории ищутся настоящие PR/MR по «отпечаткам» платформ: merge-коммиты GitHub («Merge pull request #N»), squash-merge GitHub (тема заканчивается на «(#N)») и merge-коммиты GitLab («See merge request …!N») — с дедупликацией по (платформа, номер). Merge-PR меряется диффом к первому родителю, squash-PR — диффом самого коммита. Если отпечатков нет (переписанная история, зеркала, нестандартные сообщения) — фолбэк: merge-коммиты, затем обычные коммиты. Анализируется максимум 400 единиц. Если эффективный `merged_pr_count` = 0, истории меньше двух коммитов или ни одной единицы не набралось — во все четыре PR-колонки пишется 0 (это согласованная семантика, а не ошибка).
-
-**Про `test_coverage_pct` и `untested_files_pct`.** Это НЕ runtime-покрытие: тесты никто не запускает. `test_coverage_pct` — доля строк тест-файлов среди всех строк кода, максимум 100. `untested_files_pct` — доля кодовых файлов, не являющихся тестами (репозиторий без тестов даёт 100). Обе считаются одним проходом по одному набору файлов: только кодовые файлы (без вендорных каталогов вроде `node_modules`/`vendor`, без генерата вроде `*.min.js`/`*_pb2.py`, без бинарных файлов и файлов больше 2 МБ); тест-файл определяется по каталогу (`tests/`, `spec/`, `__tests__/` и т.п.) или имени (`test_*.py`, `*.spec.ts`, `FooTest.java` и т.п.).
-
-**Про `total_pr_count` и `merged_pr_count`.** `merged_pr_count` — смерженные MR/PR: точное число из API хостинга (когда есть кэш `enrich-prs`), иначе «отпечатки» merge/squash-коммитов в истории (недосчитывают fast-forward и нестандартные squash). `total_pr_count` (колонка P) — все MR/PR независимо от состояния (merged + открытые + закрытые): это число существует только в API; без него колонка честно равна `merged_pr_count`. PR-size метрики (AX–BA) гейтятся по merged-числу: их единицы измерения берутся из истории, то есть из смерженных PR.
-
-**Про `functions_count` и `classes_count`.** Считаются tree-sitter'ом одним AST-проходом с `avg_func_length`, по тем же типам узлов на язык (`[tree_sitter.lang_func_node_types]` и `[tree_sitter.lang_class_node_types]` в TOML). Вендорные и сборочные каталоги (список `scc_exclude_dirs`) исключаются, как и генерат (`*.min.js`, `*.d.ts`, `*_pb2.py`, `*.g.dart` и т.п.) и файлы больше 2 МБ — правила те же, что у тестовых оценок. В классы входят классы, интерфейсы, трейты, протоколы, объекты, records и структуры там, где структуры — аналог классов (C++/C#/Swift/Rust/Go и т.п.); forward-объявления C++, Go-алиасы и Swift-extension'ы отфильтрованы. При `--skip-tree-sitter` обе колонки равны 0.
-
-Обе группы метрик работают одинаково для Git и Mercurial.
-
-**Про `clean_handwritten_loc` и `autogen_in_clean_loc`.** `clean_logical_loc`, как и `logical_loc`, держит генерат внутри. Вычесть из него `autogen_loc` нельзя: `autogen_loc` меряется по набору файлов `logical_loc`, а это набор больше — в нём остаются форматы данных, дампы и CMS-ядра, которых в `clean_logical_loc` нет. Поэтому пересечение считается отдельно, одним и тем же проходом scc: `autogen_in_clean_loc` — генерат внутри чистого набора, `clean_handwritten_loc` — остаток, то есть рукописный код. Разница практическая: репозиторий может нести миллионы строк сгенерированных данных при том, что сам код почти весь написан руками, и наивное вычитание `clean_logical_loc - autogen_loc` уходит в минус.
-
-**Про `clean_logical_loc`.** Уточнённый аналог `logical_loc`: та же конструкция (scc Code без вендорных каталогов, генерат внутри), но честнее про то, что считается кодом. Отличия: расширенный список исключаемых каталогов (`clean_scc_exclude_dirs` в TOML — плюс CMS-ядра вроде `bitrix`/`wp-includes`, закоммиченные копии библиотек, сборочные каталоги); из счёта убраны форматы данных и конфигурации (`clean_non_code_languages` — JSON, YAML, CSV, SVG, Markdown, Jupyter-JSON и т.п.), при этом ручная вёрстка (HTML, CSS и препроцессоры, шаблоны, XAML) остаётся кодом; XML считается кодом только на Android-путях (`res/**`, `AndroidManifest.xml`); SQL считается кодом, кроме файлов-дампов БД (баннер дамп-утилиты, массовые `INSERT`/`COPY`, аномальная форма файла). `logical_loc` при этом считается по-старому — для сопоставимости с ранее собранными данными.
-
-**Миграция старого CSV.** Если указать `--output-csv` с файлом от предыдущей версии утилиты, утилита сама обновит хвост схемы. В файле без `meta_generated_loc` прежняя колонка `meta_non_authored_loc` считается generated-only и переезжает в `meta_generated_loc`; `meta_loc_with_generated` переименовывается в `meta_logical_loc_excl_vendor`, а итоговый `meta_non_authored_loc` сразу вычисляется из сохранённых значений по формуле выше. Остальные отсутствующие колонки дописываются, а строки с пустыми новыми ячейками пересчитываются для доступных во входных данных репозиториев — без дублей и без потери неизвестных колонок. Строки без исходного репозитория сохраняются; недоступные для расчёта значения остаются пустыми и получают предупреждение в логе.
-
-Подробные формулы: `docs/metrics/pr_size_distribution.md`, `docs/metrics/test_coverage_pct.md`, `docs/metrics/ast_symbol_counts.md`.
-
----
-
-## Шаг 6. Передача результата
-
-Чтобы загрузить готовый CSV в CRM сразу после сбора, добавьте `--upload` и передайте
-учётные данные кабинета в `--login` и `--password`:
+For existing bundles:
 
 ```bash
-repo-metadata metadata repos.txt --upload --login '<логин от кабинета>' --password '<пароль>'
+uv run repo-metadata metadata /data/bundles --output-csv bundle-metadata.csv
 ```
 
-Вместо параметров логин и пароль можно задать переменными окружения `CRM_LOGIN` и
-`CRM_PASSWORD`. По умолчанию используется `https://crm.repos.fermatix.ai/`, другой адрес
-задаётся через `--crm-url`. Без `--upload` файл `repo_metadata.csv` остаётся локальным.
+For source folders, pass their **parent directory**, for example `/data/projects`
+containing `project-a/` and `project-b/`. Without history, commit and PR metrics are
+0 and history fingerprints are empty. If these folders are Git working copies,
+directory mode force-checks out the latest-commit branch **in place**, which can
+discard uncommitted changes. Use the `.txt` workflow for working clones.
 
----
+Mercurial accepts `hg+` URLs/paths or an `*.hgbundle`, and can be mixed with Git
+inputs. For Mercurial, include `mercurial` in the `brew install` or
+`apt-get install` command from step 1.
+`meta_non_merge_commit_count` is Git-only and is 0 for Mercurial.
 
-## Устранение частых проблем
+### Metrics
 
-| Симптом | Решение |
+The CSV includes repository identity, LOC, languages, Git/Mercurial history,
+PR/MR statistics, CI, tests, documentation and code structure. Pricing fields
+(`quoted_price`, `pricing_unit`, `unit_rate`) are empty placeholders.
+
+| Field | Meaning |
 |---|---|
-| `command not found: repo-metadata` | Убедитесь, что активировали окружение: `source .venv/bin/activate` |
-| `extension_language_map must be specified` | Проверьте наличие файла `repo_metadata.toml` в рабочей директории |
-| Ошибка клонирования репозитория | Проверьте токен и доступность репозитория: `git clone URL` |
-| `scc: command not found` | Установите `scc` (шаг 1) — без него LOC-метрики будут менее точными, но утилита продолжит работу |
-| Колонки `total_pr_count`, `reviewed_pr_count` = 0 | Убедитесь, что токен указан и имеет право `read_api` |
-| `total_pr_count` = 0 для корпоративного GitLab | Добавьте `--gitlab-base-url https://ВАШ_ДОМЕН/api/v4` |
-| `commit_count` = 0, `contributors_count` = 0 | Ожидаемо для локальных директорий без git. Все остальные метрики рассчитываются корректно. |
-| В конце: `N repository/repositories produced NO row`, код возврата 1 | Эти репозитории не попали в CSV — утилита не смогла их развернуть. Причина в логе рядом (строка `Failed to clone`). CSV при этом корректен для всех остальных; повторный запуск с тем же `--output-csv` дообработает только их. |
-| В конце: `measured from a repaired working tree` | Часть файлов не удалось выложить на диск средствами ОС (см. ниже) — они восстановлены под изменёнными именами, метрики полные. Действий не требуется. |
+| `raw_loc` | `scc` total lines, including comments and blank lines, without the configured dependency exclusions. |
+| `logical_loc` | `scc` code lines excluding configured dependency/build directories; generated code remains included. |
+| `autogen_loc` | Generated code within the `logical_loc` file set. |
+| `dependency_dir_loc` | Code lines in configured dependency directories. |
+| `clean_logical_loc` | Code lines with broader directory exclusions and filtering of data/config formats and database dumps; handwritten markup stays included. |
+| `clean_handwritten_loc`, `autogen_in_clean_loc` | Handwritten and generated portions of `clean_logical_loc`; their sum equals it. Do not subtract `autogen_loc` from this different file set. |
+| `primary_language`, `lang_distribution` | Programming-language mix; `full_lang_distribution` also includes non-code formats. |
+| `commit_count` | Commits across all refs, including merges. |
+| `metadata_commit_hash`, `metadata_branch_name` | Commit and branch selected for measurement. |
+| `total_pr_count`, `merged_pr_count` | All-state and merged counts from a usable API cache; without it, both are merged PRs detected in history. |
+| `test_coverage_pct` | Static test-code share, not runtime coverage. No tests are executed. |
+| `untested_files_pct` | Share of eligible code files that are not test files, not a measurement of which files tests cover. |
+| `functions_count`, `classes_count` | Tree-sitter counts of function/method and class-like declarations. `--skip-tree-sitter` disables these and other AST metrics. |
 
-### Файлы, которые операционная система не принимает
+Detailed definitions:
+[PR size distribution](docs/metrics/pr_size_distribution.md),
+[test estimates](docs/metrics/test_coverage_pct.md),
+[AST counts](docs/metrics/ast_symbol_counts.md),
+[dependency LOC](docs/metrics/dependency_dir_loc.md).
 
-В некоторых репозиториях встречаются пути, допустимые в git, но невозможные на
-конкретной машине. Чаще всего это Windows: обратный слеш внутри имени файла там
-является разделителем каталогов, символы `: * ? " < > |` запрещены, концевые
-точки и пробелы отбрасываются, а имена `CON`, `NUL`, `COM1` зарезервированы.
-`git checkout` в таком случае выкладывает всё остальное и завершается с ошибкой.
+### Fixed-recipe metrics
 
-Утилита это обрабатывает: при неудачном клонировании история скачивается
-отдельно (`--no-checkout`), затем выкладывается всё, что принимает файловая
-система, а отвергнутые файлы восстанавливаются из объектной базы под
-исправленными именами (`Sources\View.swift` → `Sources_View.swift`). Расширение
-сохраняется, поэтому язык определяется верно и строки считаются все; меняются
-только имена этих файлов, а в лог пишется список замен.
+The `meta_*` fields use separate external-tool recipes, unaffected by TOML metric
+settings or `--exclude-dir`. Commands run in the measured working tree:
 
-Защита git (`core.protectNTFS`) при этом не отключается — иначе файл с именем
-вида `..\..\something` был бы записан за пределы рабочей копии.
+| Field | Recipe |
+|---|---|
+| `meta_logical_loc` | `scc . --format json`: sum of `Code` across languages. |
+| `meta_logical_loc_excl_vendor` | `scc . --gen --by-file --exclude-dir vendor,node_modules,dist,build,generated,migrations --format json`: sum of all `Files[].Code`. |
+| `meta_generated_loc` | Same vendor-excluded report, summing only files with `Generated == true`. |
+| `meta_non_authored_loc` | `min(max(0, meta_logical_loc - meta_logical_loc_excl_vendor) + meta_generated_loc, meta_logical_loc)`. |
+| `meta_duplication_ratio` | `jscpd . --min-tokens 50 --min-lines 5 --reporters json --output <temporary-directory>`: `statistics.total.percentage / 100`. |
+| `meta_non_merge_commit_count` | Count lines from `git log --oneline --no-merges` on the measured HEAD, excluding lines containing `revert` case-insensitively. |
 
----
+External-tool failures can produce zero values with warnings. Review the run log
+before interpreting zero as a measured absence of code, duplication or history.
 
-*Вопросы и проблемы при запуске: [hi@fermatix.ai](mailto:hi@fermatix.ai)*
+### Configuration and resume
+
+The default configuration is [repo_metadata.toml](repo_metadata.toml). Use
+`--config-file /path/to/repo_metadata.toml` when running from another directory.
+
+`--exclude-dir` is repeatable. A bare name matches at any depth; a multi-segment
+path matches those consecutive segments. Matching is case-sensitive. It changes
+regular code metrics, including `logical_loc`, language shares, AST counts and
+test estimates; `raw_loc` and the fixed `meta_*` recipes retain their own scope.
+Record custom exclusions when sharing CSVs, since the results differ from a
+default run.
+
+Older CSVs are migrated in place, preserving unknown columns and existing rows.
+Missing new fields are backfilled only for repositories present in the input.
+For legacy files without `meta_generated_loc`, the old `meta_non_authored_loc`
+is interpreted as generated-only LOC, `meta_loc_with_generated` is renamed to
+`meta_logical_loc_excl_vendor`, and the current `meta_non_authored_loc` is derived
+from the stored LOC fields. Keep a copy before reusing an older CSV.
+
+Keep bundle directories specific to a batch: all bundles found there are measured,
+including any left over from an earlier list. Large inputs need space for mirrors,
+bundles and temporary working trees; set `TMPDIR` to an existing directory on a
+larger volume if necessary.
+
+### Optional upload
+
+To upload during collection, set `CRM_LOGIN` and `CRM_PASSWORD` in your environment
+and add `--upload` to the command. `--crm-url` selects the destination; use
+`uv run repo-metadata metadata --help` to see the default. The CSV is retained
+locally. The command reports created/updated rows and any import errors.
+
+Upload runs before the final incomplete-run check, so a partial CSV can be sent
+with `--upload`. For a run that needs review, collect locally and check the result
+before importing it through your usual workflow.
+
+### Troubleshooting
+
+| Symptom | Action |
+|---|---|
+| `repo-metadata` not found | Run it as `uv run repo-metadata` from the cloned project. |
+| Missing `scc` or `jscpd` | Install the missing tool using step 1; collection stops before fetching. `--allow-missing-jscpd` explicitly permits zeroed duplication fields and is unsuitable for a complete collection. |
+| Missing `extension_language_map` | Run from the project directory or pass `--config-file` pointing to its TOML. |
+| Fetch/authentication errors | Check the URL, token or SSH access. Check the CSV against the entire input list, even after exit code 0. |
+| Zero PR/review counts | Check token access, `--pr-cache` and the GitLab API base URL. Filesystem paths alone cannot supply API counts. |
+| `produced NO row`, exit code 1 | A fetched repository could not be materialized. Fix the logged cause and resume; the existing CSV may be partial. |
+| `measured from a repaired working tree` | Some paths rejected by the OS were restored under sanitized names. Review the logged renames if path-dependent metrics matter. |
+
+The optional [CSV validator](src/repo_metadata_cli/scripts/validate_csv.py) checks
+formats and invariants, but currently reads literal `None` enum values as pandas
+`NaN` and can report false errors. Inspect those cells in the CSV; do not use the
+validator's exit code alone as the acceptance check.
+
+For all available options: `uv run repo-metadata --help` and
+`uv run repo-metadata metadata --help`.
