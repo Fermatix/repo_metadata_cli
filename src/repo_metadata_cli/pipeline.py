@@ -144,8 +144,8 @@ METRICS: list[Type[BaseMetric]] = [
     # keeps real programming languages only. Appended last so the spec letters
     # A → AU above stay stable.
     FullLangDistributionMetric,  # AV
-    # Source URL/path exactly as written in repos.txt (origin remote in
-    # directory mode). Appended last so the spec letters above stay stable.
+    # Source URL/path normalized for metadata (origin remote in directory
+    # mode). Appended last so the spec letters above stay stable.
     RepoUrlMetric,               # AW
 ]
 
@@ -415,6 +415,10 @@ def run_metadata_pipeline(
     allowed_files: AllowedFiles,
     ts_manager: Optional[TreeSitterManager],
 ) -> Dict[str, list]:
+    # Normalize saved fields and upgrade legacy headers even when the current
+    # input is empty: a resumed CSV can still be handed to the upload step.
+    migrate_csv_schema(csv_path)
+
     bundle_files = sorted(
         p for glob in _BUNDLE_GLOBS for p in dataset_dir.rglob(glob)
     )
@@ -441,10 +445,7 @@ def run_metadata_pipeline(
         items = local_dirs
         local_mode = True
 
-    # Upgrade a legacy CSV in place: append the late-added columns (atomic,
-    # preserving all prior columns/values/rows), then plan the backfill of
-    # rows whose new cells are empty (fresh migration or a prior failure).
-    migrate_csv_schema(csv_path)
+    # Plan backfill of new cells left empty by migration or a prior failure.
     backfill_keys = rows_needing_backfill(csv_path)
 
     processed = _processed_repos(csv_path)
