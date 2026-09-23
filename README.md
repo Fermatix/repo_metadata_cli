@@ -52,22 +52,17 @@ Run subsequent commands from this directory so they can find
 
 ### 2. Prepare the repository list
 
-Create `repos.txt` with one Git SSH or HTTPS URL per line:
+Create `repos.txt` with one Git SSH URL per line. This Quickstart assumes your SSH
+key is configured and has read access to the repositories:
 
 ```text
 # Blank lines and lines starting with # are ignored
 
 git@git.example.com:group/service-api.git
-https://github.com/example-org/mobile-app.git
-
-# Without an SSH key, include your username and token in the HTTPS URL
-https://username:TOKEN@git.example.com/group/legacy-service.git
+git@git.example.com:group/mobile-app.git
 ```
 
 Replace the examples with your repositories and end the last line with a newline.
-
-For token environment variables or PR/MR data from a hosting API, see
-[Access and PR data](#access-and-pr-data).
 
 ### 3. Run collection
 
@@ -113,10 +108,19 @@ you need another input format, API enrichment, upload or metric details.
 
 ### Access and PR data
 
+HTTPS URLs are an optional alternative in `repos.txt`:
+
+```text
+https://github.com/example-org/mobile-app.git
+
+# Without an SSH key, include your username and token in the HTTPS URL
+https://username:TOKEN@git.example.com/group/legacy-service.git
+```
+
 For HTTPS URLs without embedded credentials, use `GITLAB_TOKEN` for GitLab access
 (`read_repository` for fetching and `read_api` for MR data).
 Use `GITHUB_TOKEN` for GitHub HTTPS access and PR data,
-with access to the repositories being measured. SSH URLs use your SSH setup.
+with access to the repositories being measured.
 
 To add API-derived PR/MR counts, set the appropriate token in your environment
 and add `--pr-cache runs/first/pr_cache.json` to the collection command. For a
