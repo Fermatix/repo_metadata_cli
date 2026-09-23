@@ -196,6 +196,7 @@ PR/MR statistics, CI, tests, documentation and code structure. Pricing fields
 
 | Field | Meaning |
 |---|---|
+| `repo_url`, `repo_org` | Source location and namespace. HTTP(S) URL userinfo is omitted from metadata; SSH usernames and local paths retain their original form. |
 | `raw_loc` | `scc` total lines, including comments and blank lines, without the configured dependency exclusions. |
 | `logical_loc` | `scc` code lines excluding configured dependency/build directories; generated code remains included. |
 | `autogen_loc` | Generated code within the `logical_loc` file set. |
@@ -246,6 +247,7 @@ Record custom exclusions when sharing CSVs, since the results differ from a
 default run.
 
 Older CSVs are migrated in place, preserving unknown columns and existing rows.
+The same URL and namespace normalization is applied when resuming an existing CSV.
 Missing new fields are backfilled only for repositories present in the input.
 For legacy files without `meta_generated_loc`, the old `meta_non_authored_loc`
 is interpreted as generated-only LOC, `meta_loc_with_generated` is renamed to

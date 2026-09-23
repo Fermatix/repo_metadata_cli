@@ -27,6 +27,17 @@ DEFAULT_PARTNER = "bundles"
 # Capture the path segment immediately following the partner-private-repos marker.
 _PARTNER_RE = re.compile(r"/partner-private-repos/([^/]+)/")
 
+# Only the HTTP authority is normalized; SSH usernames and local paths retain
+# their transport-specific meaning. Preserve VCS prefixes and the URL suffix.
+_HTTP_USERINFO_RE = re.compile(
+    r"^((?:git\+|hg\+)?https?://)[^/?#]*@", re.IGNORECASE
+)
+
+
+def normalize_repo_url(url: str) -> str:
+    """Return the metadata URL without HTTP(S) authority userinfo."""
+    return _HTTP_USERINFO_RE.sub(r"\1", url, count=1)
+
 
 def parse_partner_name(url: str) -> Optional[str]:
     """Return the partner segment from a partner-private-repos URL, else None."""
@@ -46,17 +57,10 @@ def parse_repo_org(url: str) -> Optional[str]:
 
     Returns None when the URL has no namespace (host + repo only) or is unparseable.
     """
-    s = url.strip().rstrip("/")
-    if not s:
+    try:
+        path = _url_path(url)
+    except ValueError:
         return None
-    if s.endswith(".git"):
-        s = s[:-4]
-    s = re.sub(r"^[a-zA-Z]+://", "", s)   # strip scheme
-    s = s.replace(":", "/", 1)            # scp-like host:path -> host/path
-    s = re.sub(r"^[^@/]+@", "", s)        # strip leading user@
-    if "/" not in s:
-        return None
-    path = s.split("/", 1)[1]             # drop host
     segments = [seg for seg in path.split("/") if seg]
     if len(segments) <= 1:                # only the repo segment, no namespace
         return None
@@ -142,9 +146,9 @@ def build_partner_map(repos_file: Path) -> Dict[str, str]:
 def build_url_map(repos_file: Path) -> Dict[str, str]:
     """Build {bundle_stem -> source URL/path} from a repos.txt URL list.
 
-    Keeps each entry exactly as written in repos.txt (URL or local path) so the
-    output CSV can carry the repo's original location. Blank lines and
-    comments (#) are skipped.
+    HTTP(S) authority userinfo is omitted from the metadata URL; the input file
+    used for fetching is unchanged. Other URLs and local paths retain their
+    original form. Blank lines and comments (#) are skipped.
     """
     mapping: Dict[str, str] = {}
     try:
@@ -157,7 +161,7 @@ def build_url_map(repos_file: Path) -> Dict[str, str]:
         url = line.strip()
         if not url or url.startswith("#"):
             continue
-        mapping[bundle_stem_from_url(url)] = url
+        mapping[bundle_stem_from_url(url)] = normalize_repo_url(url)
     return mapping
 
 

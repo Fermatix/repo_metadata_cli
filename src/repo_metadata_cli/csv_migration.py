@@ -5,8 +5,8 @@ produced by an older version would silently drop columns added later.  This
 module upgrades such CSVs in place:
 
 * :func:`migrate_csv_schema` appends the missing new columns (empty) while
-  preserving every existing column (including unknown extras), every value and
-  the row order;
+  preserving existing columns (including unknown extras) and row order, with
+  repository URL/namespace fields normalized to the current format;
 * :func:`update_row_fields` backfills the new columns of one existing row,
   matched by the stable ``(repo_org, repo_name)`` key with legacy fallbacks;
 * :func:`warn_unfilled_rows` reports rows whose new columns are still empty
@@ -27,6 +27,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 import pandas as pd
+
+from .partner import normalize_repo_url, parse_repo_org
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +117,24 @@ def _read_csv_preserving(csv_path: Path) -> pd.DataFrame:
     return pd.read_csv(csv_path, dtype=str, keep_default_na=False)
 
 
+def _normalize_repo_locations(df: pd.DataFrame) -> bool:
+    """Bring saved URL/namespace fields into the current metadata format."""
+    if "repo_url" not in df.columns:
+        return False
+    normalized = df["repo_url"].map(normalize_repo_url)
+    changed = normalized != df["repo_url"]
+    if not changed.any():
+        return False
+    df.loc[changed, "repo_url"] = normalized[changed]
+    if "repo_org" in df.columns:
+        # Older namespace parsing could include part of the HTTP authority.
+        # Re-derive it only for rows whose source URL needs normalization.
+        df.loc[changed, "repo_org"] = normalized[changed].map(
+            lambda url: parse_repo_org(url) or ""
+        )
+    return True
+
+
 def _atomic_write(df: pd.DataFrame, csv_path: Path) -> None:
     tmp_path = csv_path.with_name(csv_path.name + ".tmp")
     df.to_csv(tmp_path, index=False)
@@ -134,21 +154,23 @@ def _load_for_update(csv_path: Path) -> Optional[pd.DataFrame]:
 def migrate_csv_schema(csv_path: Path) -> bool:
     """Append missing :data:`NEW_COLUMNS` (empty) to an existing CSV.
 
-    All prior columns, values and row order are preserved; unknown extra
-    columns survive.  The write is atomic.  Returns True when a migration was
-    performed.
+    Repository URL/namespace values are normalized along with legacy headers.
+    Other values, unknown columns and row order are preserved. The write is
+    atomic. Returns True when a migration was performed.
     """
     df = _load_for_update(csv_path)
     if df is None:
         return False
-    changed = _migrate_legacy_meta_columns(df)
+    schema_changed = _migrate_legacy_meta_columns(df)
+    locations_changed = _normalize_repo_locations(df)
     missing = [c for c in NEW_COLUMNS if c not in df.columns]
-    if not missing and not changed:
+    if not missing and not schema_changed and not locations_changed:
         return False
     for column in missing:
         df[column] = ""
-    base_columns = [column for column in df.columns if column not in NEW_COLUMNS]
-    df = df[[*base_columns, *NEW_COLUMNS]]
+    if missing or schema_changed:
+        base_columns = [column for column in df.columns if column not in NEW_COLUMNS]
+        df = df[[*base_columns, *NEW_COLUMNS]]
     _atomic_write(df, csv_path)
     logger.info("Migrated %s to the current CSV schema.", csv_path)
     return True
